@@ -1,33 +1,77 @@
-/* ===== Claude API 呼び出し ===== */
+/* =========================================================================
+   api.js — Claude API (ツール実行ループつき)
+   ========================================================================= */
 
 const API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-5";
-const MAX_TOKENS = 3000;
-const HISTORY_LIMIT = 24; // APIに送る直近メッセージ数
+const MAX_TOKENS = 4000;
+const HISTORY_LIMIT = 30;
+const MAX_TOOL_ROUNDS = 6;
+
+class ApiError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+  friendly() {
+    if (this.status === 401) return "APIキーが正しくないようです。設定画面で確認してください。";
+    if (this.status === 403) return "このAPIキーには権限がないようです。";
+    if (this.status === 429) return "少し混み合っています。1分ほど待ってからもう一度お願いします。";
+    if (this.status === 529) return "サーバーが混雑しています。少し待ってからもう一度。";
+    if (this.status >= 500) return "サーバー側の不具合のようです。少し待ってからもう一度。";
+    if (/credit|billing|balance/i.test(this.message)) return "APIの残高が不足しているようです。おうちの方に確認してください。";
+    return this.message || "エラーが起きました。もう一度お試しください。";
+  }
+}
 
 /**
- * Claude にメッセージを送り、ストリーミングでテキストを受け取る。
- * @param {string} apiKey
- * @param {string} systemPrompt
- * @param {Array} messages - [{role, content}] 形式(contentは文字列 or ブロック配列)
- * @param {(text: string) => void} onDelta - テキスト断片を受け取るコールバック
- * @returns {Promise<string>} 完成した応答テキスト
+ * ツール実行ループつきでClaudeを呼ぶ。
+ * @param {object} o
+ *   apiKey, system, messages, tools,
+ *   onDelta(text)        — テキストが届くたび
+ *   onToolUse(name,input)— ツール呼び出しが決まったとき(表示用)
+ *   runTool(name,input)  — 実際にツールを実行して結果を返す(async)
+ * @returns {Promise<{text:string, messages:Array}>}
  */
-async function callClaude(apiKey, systemPrompt, messages, onDelta) {
+async function chatWithTools(o) {
+  let messages = trimHistory(o.messages);
+  let finalText = "";
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const res = await streamOnce({
+      apiKey: o.apiKey, system: o.system, messages, tools: o.tools,
+      onDelta: (t) => { finalText += t; o.onDelta?.(t); },
+    });
+
+    messages = [...messages, { role: "assistant", content: res.content }];
+
+    const toolUses = res.content.filter((b) => b.type === "tool_use");
+    if (!toolUses.length) return { text: finalText, messages };
+
+    const results = [];
+    for (const tu of toolUses) {
+      o.onToolUse?.(tu.name, tu.input);
+      let out;
+      try {
+        out = await o.runTool(tu.name, tu.input);
+        results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) });
+      } catch (e) {
+        results.push({ type: "tool_result", tool_use_id: tu.id, content: String(e.message || e), is_error: true });
+      }
+    }
+    messages = [...messages, { role: "user", content: results }];
+  }
+  return { text: finalText, messages };
+}
+
+/** 1回分のストリーミングリクエスト。content ブロック配列を組み立てて返す */
+async function streamOnce({ apiKey, system, messages, tools, onDelta }) {
   const body = {
     model: MODEL,
     max_tokens: MAX_TOKENS,
     stream: true,
     output_config: { effort: "medium" },
-    system: [
-      {
-        type: "text",
-        text: systemPrompt,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: trimHistory(messages),
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+    messages,
   };
+  if (tools?.length) body.tools = tools;
 
   const res = await fetch(API_URL, {
     method: "POST",
@@ -42,97 +86,86 @@ async function callClaude(apiKey, systemPrompt, messages, onDelta) {
 
   if (!res.ok) {
     let detail = "";
-    try {
-      const err = await res.json();
-      detail = err?.error?.message || "";
-    } catch (_) { /* ignore */ }
+    try { detail = (await res.json())?.error?.message || ""; } catch (_) {}
     throw new ApiError(res.status, detail);
   }
 
-  // SSE をパースしてテキストを組み立てる
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
-  let fullText = "";
+  let buf = "";
+  const blocks = [];        // 完成した content ブロック
+  const partial = {};       // index -> {type, text|json}
   let stopReason = null;
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop(); // 未完の行は残す
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop();
 
     for (const line of lines) {
       if (!line.startsWith("data:")) continue;
-      const payload = line.slice(5).trim();
-      if (!payload || payload === "[DONE]") continue;
-      let event;
-      try { event = JSON.parse(payload); } catch (_) { continue; }
+      const raw = line.slice(5).trim();
+      if (!raw || raw === "[DONE]") continue;
+      let ev;
+      try { ev = JSON.parse(raw); } catch (_) { continue; }
 
-      if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-        fullText += event.delta.text;
-        onDelta(event.delta.text);
-      } else if (event.type === "message_delta" && event.delta?.stop_reason) {
-        stopReason = event.delta.stop_reason;
-      } else if (event.type === "error") {
-        throw new ApiError(0, event.error?.message || "ストリーミングエラー");
+      if (ev.type === "content_block_start") {
+        const cb = ev.content_block;
+        if (cb.type === "text") partial[ev.index] = { type: "text", text: "" };
+        else if (cb.type === "tool_use") partial[ev.index] = { type: "tool_use", id: cb.id, name: cb.name, json: "" };
+        else if (cb.type === "thinking") partial[ev.index] = { type: "thinking", skip: true };
+      } else if (ev.type === "content_block_delta") {
+        const p = partial[ev.index];
+        if (!p) continue;
+        if (ev.delta.type === "text_delta") { p.text += ev.delta.text; onDelta?.(ev.delta.text); }
+        else if (ev.delta.type === "input_json_delta") { p.json += ev.delta.partial_json; }
+      } else if (ev.type === "content_block_stop") {
+        const p = partial[ev.index];
+        if (!p || p.skip) continue;
+        if (p.type === "text") { if (p.text) blocks.push({ type: "text", text: p.text }); }
+        else if (p.type === "tool_use") {
+          let input = {};
+          try { input = p.json ? JSON.parse(p.json) : {}; } catch (_) {}
+          blocks.push({ type: "tool_use", id: p.id, name: p.name, input });
+        }
+        delete partial[ev.index];
+      } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
+        stopReason = ev.delta.stop_reason;
+      } else if (ev.type === "error") {
+        throw new ApiError(0, ev.error?.message || "ストリーミングエラー");
       }
     }
   }
 
-  if (stopReason === "refusal") {
-    throw new ApiError(0, "この内容にはお答えできませんでした。別の聞き方をためしてみてね。");
-  }
-  return fullText;
+  if (stopReason === "refusal") throw new ApiError(0, "この内容にはお答えできませんでした。別の聞き方を試してみてください。");
+  if (!blocks.length) blocks.push({ type: "text", text: "" });
+  return { content: blocks, stopReason };
 }
 
-/** 履歴を直近に絞り、古い画像はテキストに置き換えてトークンを節約する */
+/** 履歴を直近に絞る。画像は最新1枚のみ残してトークンを節約 */
 function trimHistory(messages) {
   const recent = messages.slice(-HISTORY_LIMIT);
-  // 先頭は必ず user から始まるように調整
   while (recent.length && recent[0].role !== "user") recent.shift();
-
-  // 画像は最新の1枚だけ残す
   let imageKept = false;
-  const result = [];
+  const out = [];
   for (let i = recent.length - 1; i >= 0; i--) {
     const m = recent[i];
-    if (Array.isArray(m.content)) {
-      const hasImage = m.content.some((b) => b.type === "image");
-      if (hasImage && imageKept) {
+    if (Array.isArray(m.content) && m.content.some((b) => b.type === "image")) {
+      if (imageKept) {
         const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
-        result.unshift({ role: m.role, content: "【写真をおくりました】" + (text ? "\n" + text : "") });
+        out.unshift({ role: m.role, content: "【写真を送りました】" + (text ? "\n" + text : "") });
         continue;
       }
-      if (hasImage) imageKept = true;
+      imageKept = true;
     }
-    result.unshift(m);
+    out.unshift(m);
   }
-  return result;
+  return out;
 }
 
-class ApiError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-  friendlyMessage() {
-    if (this.status === 401) return "APIキーが正しくないみたい。設定画面で確認してね。";
-    if (this.status === 429) return "少し混み合っているよ。1分ほど待ってからもう一度ためしてね。";
-    if (this.status === 529) return "サーバーが混雑中…。少し待ってからもう一度ためしてね。";
-    if (this.status >= 500) return "サーバーの調子が悪いみたい。少し待ってからもう一度ためしてね。";
-    if (this.status === 400 && /credit|billing/i.test(this.message)) return "APIの利用残高が足りないようです。おうちの人に確認してね。";
-    return this.message || "エラーが起きちゃった。もう一度ためしてみてね。";
-  }
-}
-
-/**
- * 画像ファイルを読み込み、長辺を制限したJPEGのbase64に変換する。
- * @param {File} file
- * @returns {Promise<{data: string, mediaType: string, previewUrl: string}>}
- */
+/** 画像を長辺1568pxのJPEGに縮小してbase64化 */
 function processImage(file, maxSize = 1568) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -140,26 +173,15 @@ function processImage(file, maxSize = 1568) {
     img.onload = () => {
       let { width, height } = img;
       const scale = Math.min(1, maxSize / Math.max(width, height));
-      width = Math.round(width * scale);
-      height = Math.round(height * scale);
-
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      width = Math.round(width * scale); height = Math.round(height * scale);
+      const cv = document.createElement("canvas");
+      cv.width = width; cv.height = height;
+      cv.getContext("2d").drawImage(img, 0, 0, width, height);
+      const dataUrl = cv.toDataURL("image/jpeg", 0.85);
       URL.revokeObjectURL(url);
-      resolve({
-        data: dataUrl.split(",")[1],
-        mediaType: "image/jpeg",
-        previewUrl: dataUrl,
-      });
+      resolve({ data: dataUrl.split(",")[1], mediaType: "image/jpeg", previewUrl: dataUrl });
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("画像を読み込めませんでした"));
-    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("画像を読み込めませんでした")); };
     img.src = url;
   });
 }

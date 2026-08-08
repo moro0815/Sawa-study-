@@ -2,153 +2,276 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#ff9d6c">
-<title>さわの勉強部屋 🐾 AI家庭教師</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐾</text></svg>">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1c2333">
+<title>沙和ナビ — 獣医への6年計画</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<!-- ヘッダー -->
-<header class="app-header">
-  <div class="header-left">
-    <span class="logo">🐾</span>
-    <div class="header-title">
-      <h1>さわの勉強部屋</h1>
-      <p class="header-sub">獣医さんへの道</p>
+<header class="topbar">
+  <div class="tb-left">
+    <span class="tb-logo">🩺</span>
+    <div>
+      <h1 class="tb-title">沙和ナビ</h1>
+      <p class="tb-sub" id="tbSub">獣医への6年計画</p>
     </div>
   </div>
-  <div class="header-right">
-    <div class="streak-badge" id="streakBadge" title="連続学習日数">🔥 <span id="streakCount">0</span>日</div>
-    <div class="xp-badge" id="xpBadge">⭐ <span id="xpCount">0</span> XP</div>
+  <div class="tb-right">
+    <div class="tb-stat"><span class="tb-stat-v" id="statMastery">—</span><span class="tb-stat-l">習得</span></div>
+    <div class="tb-stat"><span class="tb-stat-v" id="statDue">—</span><span class="tb-stat-l">復習待ち</span></div>
+    <div class="tb-stat warn"><span class="tb-stat-v" id="statAlert">—</span><span class="tb-stat-l">要注意</span></div>
   </div>
 </header>
 
-<!-- メイン -->
-<main id="mainArea">
+<main id="main">
 
-  <!-- ====== ホーム画面 ====== -->
-  <section id="screen-home" class="screen active">
-    <div class="card greeting-card">
-      <div class="greeting-emoji" id="greetingEmoji">🐰</div>
+<!-- ══════════ ホーム ══════════ -->
+<section id="s-home" class="screen active">
+  <div class="card hero">
+    <div class="hero-head">
       <div>
-        <p class="greeting-text" id="greetingText">こんにちは!</p>
-        <p class="greeting-sub" id="greetingSub">今日も一緒にがんばろう!</p>
+        <p class="hero-greet" id="heroGreet">こんにちは</p>
+        <p class="hero-line" id="heroLine">今日やることを用意しました。</p>
+      </div>
+      <div class="hero-emoji">🐾</div>
+    </div>
+    <div class="dream-track">
+      <div class="dream-track-bar"><div class="dream-track-fill" id="dreamFill"></div></div>
+      <div class="dream-track-labels">
+        <span id="dreamNow">中1</span>
+        <span class="dream-goal">🎓 獣医学部</span>
       </div>
     </div>
+    <p class="dream-note" id="dreamNote"></p>
+  </div>
 
-    <div class="card level-card">
-      <div class="level-head">
-        <span class="level-title" id="levelTitle">どうぶつ見習い</span>
-        <span class="level-num" id="levelNum">Lv.1</span>
+  <div class="card">
+    <h2 class="ct">▶ 今日やること <span class="ct-note" id="todayNote"></span></h2>
+    <div id="todayList" class="today-list"></div>
+    <div class="interleave-banner" id="interleaveBanner" hidden>
+      <b>⚠ わざと混ぜています</b>
+      <p>今日の出題は単元を混ぜてあります。混ぜると<b>その日の正答率は下がります</b>が、本番で思い出せる力は約2倍になることが研究でわかっています(Rohrer et al. 2020)。今日できなくても、それは設計どおりです。</p>
+    </div>
+    <button class="btn btn-primary" id="startStudy">この内容で学習をはじめる</button>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 話す相手を選ぶ</h2>
+    <p class="cs">同じAIですが、役割が違います。今の気分で選んでください。</p>
+    <div class="persona-picker" id="personaPicker"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 教科別の習得度</h2>
+    <div id="subjectBars"></div>
+  </div>
+</section>
+
+<!-- ══════════ 学習(チャット) ══════════ -->
+<section id="s-study" class="screen">
+  <div class="persona-bar" id="personaBar"></div>
+  <div class="chat" id="chat"></div>
+  <div class="conf-panel" id="confPanel" hidden>
+    <p class="conf-q">答える前に — どのくらい自信ある?</p>
+    <div class="conf-btns">
+      <button class="conf-btn c3" data-conf="3">◎ 自信ある</button>
+      <button class="conf-btn c2" data-conf="2">○ たぶん</button>
+      <button class="conf-btn c1" data-conf="1">△ わからない</button>
+    </div>
+    <p class="conf-why">※ 自信を申告してから答えると、間違いが直りやすくなることが研究でわかっています</p>
+  </div>
+  <div class="quickrow" id="quickRow"></div>
+  <div class="composer">
+    <label class="cam" title="写真を送る">📷<input type="file" id="photoIn" accept="image/*" hidden></label>
+    <textarea id="input" rows="1" placeholder="質問や、思ったことを書いてください…"></textarea>
+    <button id="send" class="send">↑</button>
+  </div>
+  <div class="preview" id="preview" hidden><img id="previewImg" alt="送信する画像"><button id="rmPhoto">✕</button></div>
+</section>
+
+<!-- ══════════ 弱点 ══════════ -->
+<section id="s-weak" class="screen">
+  <div class="card">
+    <h2 class="ct">▶ わかったつもり率</h2>
+    <div class="overconf">
+      <div class="overconf-num" id="overconfNum">—</div>
+      <div class="overconf-txt">
+        <p id="overconfMsg">まだデータがありません。</p>
+        <p class="cs">「自信がある」と答えた中で、実際には間違えていた割合です。この数字が高いほど、本番で崩れやすい状態です。</p>
       </div>
-      <div class="progress-bar"><div class="progress-fill" id="levelProgress"></div></div>
-      <p class="level-next" id="levelNext">次のレベルまで 100 XP</p>
-      <div class="vet-road">
-        <span>🌱</span><span>─</span><span>🐹</span><span>─</span><span>🐕</span><span>─</span><span>🏥</span><span>─</span><span class="vet-goal">👩‍⚕️獣医さん!</span>
-      </div>
     </div>
+  </div>
 
-    <div class="card">
-      <h2 class="card-title">📋 今日のミッション</h2>
-      <ul class="mission-list" id="missionList"></ul>
-    </div>
+  <div class="card">
+    <h2 class="ct">▶ 確信度 × 正誤の4象限</h2>
+    <p class="cs">この分け方は Metcalfe &amp; Finn (2011) の研究に基づいています。<b>左上(わかったつもり)が最優先</b>です。逆説的ですが、自信を持って間違えた場所こそ、最も強く・長く修正されます。</p>
+    <div class="quad" id="quadGrid"></div>
+  </div>
 
-    <div class="card">
-      <h2 class="card-title">🦁 どうぶつ図鑑 <span class="collection-count" id="collectionCount"></span></h2>
-      <div class="animal-preview" id="animalPreview"></div>
-      <button class="btn-secondary" data-goto="zukan">図鑑を見る</button>
-    </div>
+  <div class="card">
+    <h2 class="ct">▶ 前提をさかのぼる(原因診断)</h2>
+    <p class="cs">つまずいた単元を選ぶと、その土台になっている過去の単元をさかのぼり、<b>本当に壊れている場所</b>を探します。</p>
+    <select id="diagSelect" class="select"></select>
+    <div id="diagResult" class="diag-result"></div>
+  </div>
 
-    <div class="card">
-      <h2 class="card-title">📊 教科べつのがんばり</h2>
-      <div id="subjectStats"></div>
+  <div class="card">
+    <h2 class="ct">▶ 知識マップ</h2>
+    <div class="map-filter" id="mapFilter"></div>
+    <div id="knowledgeMap" class="kmap"></div>
+    <div class="kmap-legend">
+      <span><i class="dot d0"></i>未学習</span><span><i class="dot d1"></i>学習中</span>
+      <span><i class="dot d2"></i>習得</span><span><i class="dot d3"></i>要注意</span>
     </div>
+  </div>
+</section>
 
-    <button class="btn-primary btn-big" data-goto="study">✏️ 勉強をはじめる!</button>
-  </section>
+<!-- ══════════ 成績 ══════════ -->
+<section id="s-grade" class="screen">
+  <div class="card">
+    <h2 class="ct">▶ 定期テストを記録する</h2>
+    <div class="form-row">
+      <select id="gSubject" class="select"></select>
+      <input id="gName" class="inp" placeholder="テスト名(例:2学期中間)">
+    </div>
+    <div class="form-row">
+      <input id="gScore" class="inp" type="number" placeholder="自分の点数" min="0" max="100">
+      <input id="gAvg" class="inp" type="number" placeholder="クラス平均点" min="0" max="100">
+    </div>
+    <button class="btn btn-primary" id="addGrade">記録して評価する</button>
+    <div id="gradeResult" class="grade-result"></div>
+  </div>
 
-  <!-- ====== 勉強(チャット)画面 ====== -->
-  <section id="screen-study" class="screen">
-    <div class="subject-bar" id="subjectBar"></div>
+  <div class="card">
+    <h2 class="ct">▶ 成績の推移</h2>
+    <div id="gradeHistory"></div>
+  </div>
 
-    <div class="chat-area" id="chatArea">
-      <div class="chat-welcome" id="chatWelcome">
-        <p>🐰 こんにちは!ミミ先生だよ。</p>
-        <p>わからない問題があったら、なんでも聞いてね。<br>宿題や問題集は <b>📷 写真</b> でおくってくれてもOK!</p>
-      </div>
-    </div>
+  <div class="card">
+    <h2 class="ct">▶ 内申点(9教科 × 5段階 = 45点)</h2>
+    <p class="cs">2021年度から全教科が「知識・技能」「思考・判断・表現」「主体的に学習に取り組む態度」の3観点で評価されます。テストの点だけでは決まりません。</p>
+    <div id="naishinGrid" class="naishin-grid"></div>
+    <div class="naishin-total">合計 <b id="naishinTotal">—</b> / 45</div>
+  </div>
 
-    <div class="quick-actions">
-      <button class="chip-action" id="btnQuiz">🎯 クイズに挑戦</button>
-      <button class="chip-action" id="btnExplain">💡 今日の授業の復習</button>
-      <button class="chip-action" id="btnHomework">📝 宿題を一緒にやる</button>
+  <div class="card">
+    <h2 class="ct">▶ 模試の偏差値</h2>
+    <div class="form-row">
+      <input id="hensaIn" class="inp" type="number" step="0.1" placeholder="偏差値(例:52.5)">
+      <button class="btn btn-sm" id="saveHensa">記録</button>
     </div>
+    <p class="cs" id="hensaNow"></p>
+  </div>
 
-    <div class="input-bar">
-      <label class="photo-btn" title="写真をおくる">
-        📷<input type="file" id="photoInput" accept="image/*" hidden>
-      </label>
-      <textarea id="chatInput" rows="1" placeholder="質問をかいてね…"></textarea>
-      <button id="sendBtn" class="send-btn" title="送信">➤</button>
-    </div>
-    <div class="photo-preview" id="photoPreview" hidden>
-      <img id="previewImg" alt="アップロードする写真">
-      <button id="removePhoto">✕</button>
-    </div>
-  </section>
+  <div class="card">
+    <h2 class="ct">▶ どこに時間を使うと一番効くか</h2>
+    <p class="cs">同じ1時間を、最も合格可能性が上がる場所に投じるための指標です。習得度の穴・テストの得点・獣医学部での重要度を合成しています。</p>
+    <div id="marginalList"></div>
+  </div>
 
-  <!-- ====== 図鑑画面 ====== -->
-  <section id="screen-zukan" class="screen">
-    <div class="card">
-      <h2 class="card-title">🦁 どうぶつ図鑑</h2>
-      <p class="zukan-desc">勉強してXPをためると、新しいどうぶつが仲間になるよ!<br>獣医さんになったら、みんなを助けてあげてね。</p>
-      <div class="animal-grid" id="animalGrid"></div>
-    </div>
-  </section>
+  <div class="card">
+    <h2 class="ct">▶ 獣医学部 全17校との距離</h2>
+    <p class="cs cs-warn">偏差値は2026年度の一般的な公表値をもとにした<b>目安</b>です。出願判断は必ず河合塾・駿台等の最新資料で確認してください。</p>
+    <div id="schoolList"></div>
+  </div>
+</section>
 
-  <!-- ====== 設定画面 ====== -->
-  <section id="screen-settings" class="screen">
-    <div class="card">
-      <h2 class="card-title">⚙️ 設定(おうちの人向け)</h2>
-      <label class="field-label">Claude APIキー
-        <input type="password" id="apiKeyInput" placeholder="sk-ant-api03-...">
-      </label>
-      <p class="field-help">APIキーは <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a> で取得できます。キーはこの端末のブラウザ内にのみ保存されます。</p>
-      <label class="field-label">お子さんの名前(よびかけに使います)
-        <input type="text" id="nameInput" placeholder="さわ">
-      </label>
-      <button class="btn-primary" id="saveSettings">保存する</button>
-      <p id="settingsMsg" class="settings-msg"></p>
+<!-- ══════════ 計画 ══════════ -->
+<section id="s-plan" class="screen">
+  <div class="card">
+    <h2 class="ct">▶ 獣医学部から逆算した6年計画</h2>
+    <p class="cs">ゴールから逆算しています。今の学年をタップすると詳細が開きます。</p>
+    <div id="roadmap"></div>
+  </div>
+  <div class="card">
+    <h2 class="ct">▶ 共通テスト(2025年度〜 新課程)</h2>
+    <p class="cs">国公立の獣医学部は原則 <b>6教科8科目</b>。2025年度入試から「情報I」が加わりました。</p>
+    <div class="form-row">
+      <input id="targetRate" class="inp" type="number" placeholder="目標得点率(%)" value="78" min="40" max="100">
+      <button class="btn btn-sm" id="calcTarget">逆算する</button>
     </div>
-    <div class="card">
-      <h2 class="card-title">🗑️ データ管理</h2>
-      <button class="btn-danger" id="resetChat">会話履歴をリセット</button>
-      <button class="btn-danger" id="resetAll">すべてのデータをリセット</button>
+    <div id="kyotsuTable"></div>
+  </div>
+  <div class="card">
+    <h2 class="ct">▶ 自分で決めた約束</h2>
+    <div id="goalList"></div>
+    <p class="cs">※ 目標は「決められる」のではなく「自分で決める」ほうが続きます(自己決定理論)。学習画面でナギに相談しながら決めてください。</p>
+  </div>
+</section>
+
+<!-- ══════════ 保護者 ══════════ -->
+<section id="s-parent" class="screen">
+  <div class="card">
+    <h2 class="ct">▶ 今週のレポート</h2>
+    <div id="weeklyReport"></div>
+  </div>
+
+  <div class="card accent-card">
+    <h2 class="ct">▶ 声のかけ方(研究にもとづく)</h2>
+    <p class="cs">自己決定理論の研究では、統制的な関わり(命令・監視・比較)は意欲を確実に下げ、自律性支援(理由の説明・気持ちの承認・選択肢)は成績と心理的健康の両方を高めます。</p>
+    <div class="say-grid">
+      <div class="say bad"><h3>✕ 避けたい</h3><ul>
+        <li>「ちゃんとやりなさい」</li><li>「なんでこの点なの」</li>
+        <li>「○○ちゃんはできてるのに」</li><li>「やらないなら○○取り上げるよ」</li>
+        <li>「もう中1なんだから」</li></ul></div>
+      <div class="say good"><h3>○ 効果がある</h3><ul>
+        <li>「今日はどこまでやった?」(事実を聞く)</li>
+        <li>「その問題、どこで迷ったの?」(過程に関心)</li>
+        <li>「休みたい日もあるよね」(気持ちを認める)</li>
+        <li>「AとB、どっちから始める?」(選択肢)</li>
+        <li>「そこで止まって考え直したのがすごい」(取り組み方をほめる)</li></ul></div>
     </div>
-  </section>
+    <p class="cs">※ 「頭がいいね」より「その粘り方がいいね」。能力ではなく取り組み方をほめてください。</p>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ このシステムの科学的根拠</h2>
+    <p class="cs">機能はすべて査読済みの研究に対応させています。効果が疑わしいものは、疑わしいと明記しています。</p>
+    <div id="evidenceList"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 設定</h2>
+    <label class="lbl">Claude APIキー
+      <input type="password" id="apiKey" class="inp" placeholder="sk-ant-api03-…"></label>
+    <p class="cs"><a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a> で取得。キーはこの端末のブラウザ内にのみ保存されます。</p>
+    <div class="form-row">
+      <label class="lbl">名前<input type="text" id="pName" class="inp" placeholder="沙和"></label>
+      <label class="lbl">学年<select id="pGrade" class="select"></select></label>
+    </div>
+    <button class="btn btn-primary" id="saveSettings">保存</button>
+    <p id="settingsMsg" class="ok-msg"></p>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ データ</h2>
+    <button class="btn btn-ghost" id="exportData">学習データを書き出す(JSON)</button>
+    <label class="btn btn-ghost file-btn">学習データを読み込む<input type="file" id="importData" accept="application/json" hidden></label>
+    <button class="btn btn-danger" id="resetChat">会話履歴だけ消す</button>
+    <button class="btn btn-danger" id="resetAll">すべて消す</button>
+  </div>
+</section>
+
 </main>
 
-<!-- 下部ナビ -->
-<nav class="bottom-nav">
-  <button class="nav-btn active" data-goto="home"><span>🏠</span>ホーム</button>
-  <button class="nav-btn" data-goto="study"><span>✏️</span>べんきょう</button>
-  <button class="nav-btn" data-goto="zukan"><span>🦁</span>ずかん</button>
-  <button class="nav-btn" data-goto="settings"><span>⚙️</span>せってい</button>
+<nav class="nav">
+  <button class="nb active" data-go="home"><span>🏠</span>ホーム</button>
+  <button class="nb" data-go="study"><span>💬</span>学習</button>
+  <button class="nb" data-go="weak"><span>🎯</span>弱点</button>
+  <button class="nb" data-go="grade"><span>📊</span>成績</button>
+  <button class="nb" data-go="plan"><span>🗺️</span>計画</button>
+  <button class="nb" data-go="parent"><span>👪</span>保護者</button>
 </nav>
 
-<!-- お祝いオーバーレイ -->
-<div class="celebrate" id="celebrate" hidden>
-  <div class="celebrate-box">
-    <div class="celebrate-emoji" id="celebrateEmoji">🎉</div>
-    <p class="celebrate-title" id="celebrateTitle"></p>
-    <p class="celebrate-sub" id="celebrateSub"></p>
-    <button class="btn-primary" id="celebrateClose">やったー!</button>
-  </div>
-</div>
+<div class="toast" id="toast" hidden></div>
 
-<script src="js/config.js"></script>
+<script src="js/evidence.js"></script>
+<script src="js/curriculum.js"></script>
+<script src="js/memory.js"></script>
+<script src="js/exam.js"></script>
+<script src="js/personas.js"></script>
 <script src="js/api.js"></script>
 <script src="js/app.js"></script>
 </body>
