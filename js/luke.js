@@ -379,13 +379,13 @@ function streakDays(S) {
    きもちに応じて、耳・しっぽ・首のかたむき・目のかたちが変わる。 */
 
 const LUKE_EYES = {
-  open:    'M0 0 a4.3 4.3 0 1 0 .01 0Z',
-  wide:    'M0 -1 a5.4 5.4 0 1 0 .01 0Z',
+  open:    'M0 0 a5.2 5.2 0 1 0 .01 0Z',
+  wide:    'M0 -1 a6.3 6.3 0 1 0 .01 0Z',
   arc:     'M-5 2 Q0 -5 5 2',
   closed:  'M-5 0 Q0 3.4 5 0',
   sad:     'M-4.6 2 Q0 -2 4.6 2',
-  sparkle: 'M0 -1.6 a6 6 0 1 0 .01 0Z',
-  away:    'M-3.4 0 a3 3 0 1 0 .01 0Z',
+  sparkle: 'M0 -1.6 a6.6 6.6 0 1 0 .01 0Z',
+  away:    'M-3.4 0 a3.6 3.6 0 1 0 .01 0Z',
 };
 
 /**
@@ -403,9 +403,9 @@ function lukeSvg(mood, size = 132) {
   const fx = a.faceX || 0;
 
   const eyeEl = (cx) => line
-    ? `<path d="${eye}" transform="translate(${cx} 88)" fill="none" stroke="#3b3029" stroke-width="2.6" stroke-linecap="round"/>`
-    : `<g transform="translate(${cx} 88)"><path d="${eye}" fill="#3b3029"/>
-         <circle cx="-1.5" cy="-1.8" r="1.6" fill="#fff" opacity=".95"/>
+    ? `<path d="${eye}" transform="translate(${cx} 88)" fill="none" stroke="#4a2c17" stroke-width="2.6" stroke-linecap="round"/>`
+    : `<g transform="translate(${cx} 88)"><path d="${eye}" fill="#4a2c17"/>
+         <circle cx="-1.7" cy="-2" r="1.9" fill="#fff" opacity=".97"/>
          ${a.eye === "sparkle" ? `<circle cx="2" cy="2" r="1" fill="#fff" opacity=".85"/>` : ""}</g>`;
 
   const puff = (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}"/>`;
@@ -413,15 +413,15 @@ function lukeSvg(mood, size = 132) {
   return `<svg class="luke-svg${a.bob ? " lk-bob" : ""}" viewBox="0 0 200 200" width="${size}" height="${size}"
     role="img" aria-label="Luke(${mood.name})" style="--tail:${a.tail}s">
   <defs>
-    <radialGradient id="lkF" cx="40%" cy="30%">
-      <stop offset="0%" stop-color="#fffaf0"/><stop offset="100%" stop-color="#efdcbb"/>
+    <radialGradient id="lkF" cx="38%" cy="28%">
+      <stop offset="0%" stop-color="#f6cfa0"/><stop offset="100%" stop-color="#e0a367"/>
     </radialGradient>
   </defs>
 
   <!-- しっぽ(くるん)。からだより先に描いて、後ろにする -->
   <g class="lk-tail">
     <path d="M146 152 q28 4 32 -18 q3 -19 -13 -21 q-12 -1 -12 11 q0 9 9 9"
-      fill="none" stroke="#e3cba4" stroke-width="17" stroke-linecap="round"/>
+      fill="none" stroke="#d0904f" stroke-width="17" stroke-linecap="round"/>
     <path d="M146 152 q28 4 32 -18 q3 -19 -13 -21 q-12 -1 -12 11 q0 9 9 9"
       fill="none" stroke="url(#lkF)" stroke-width="11" stroke-linecap="round"/>
   </g>
@@ -430,15 +430,23 @@ function lukeSvg(mood, size = 132) {
   <g fill="url(#lkF)">
     ${puff(100, 158, 37)}${puff(73, 165, 23)}${puff(127, 165, 23)}${puff(100, 136, 29)}
   </g>
-  <g fill="#fbf1e0">${puff(83, 183, 13)}${puff(117, 183, 13)}</g>
+  <g fill="#f4c894">${puff(83, 183, 13)}${puff(117, 183, 13)}</g>
+
+  <!-- 首輪(ブルー)と、ゴールドのLチャーム -->
+  <path d="M74 130 q26 13 52 0" fill="none" stroke="#2f7bad" stroke-width="10" stroke-linecap="round"/>
+  <path d="M74 130 q26 13 52 0" fill="none" stroke="#4a97c8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="100" cy="148" r="7.5" fill="#e0a82e"/>
+  <circle cx="100" cy="148" r="7.5" fill="none" stroke="#c28c1c" stroke-width="1.2"/>
+  <text x="100" y="152" font-size="9" font-weight="700" text-anchor="middle" fill="#8a6111"
+    font-family="system-ui, sans-serif">L</text>
 
   <!-- あたま(耳ごとかたむく) -->
   <g class="lk-head" style="--tilt:${a.tilt}deg">
     <!-- たれ耳。頭より外・下に出して、少し濃い色にする -->
-    <g class="lk-ear lk-ear-l" style="--ear:${a.ear}deg" fill="#e0c399">
+    <g class="lk-ear lk-ear-l" style="--ear:${a.ear}deg" fill="#d2934f">
       ${puff(47, 93, 20)}${puff(41, 116, 17)}${puff(47, 134, 12)}
     </g>
-    <g class="lk-ear lk-ear-r" style="--ear:${a.ear}deg" fill="#e0c399">
+    <g class="lk-ear lk-ear-r" style="--ear:${a.ear}deg" fill="#d2934f">
       ${puff(153, 93, 20)}${puff(159, 116, 17)}${puff(153, 134, 12)}
     </g>
     <!-- 頭のふわふわ -->
@@ -449,22 +457,24 @@ function lukeSvg(mood, size = 132) {
     <!-- 顔(ソッポのときは横にずれる) -->
     <g class="lk-face" style="--fx:${fx}px">
       ${eyeEl(85)}${eyeEl(115)}
-      <ellipse cx="100" cy="110" rx="19" ry="14.5" fill="#fffaf1"/>
-      <path d="M92.5 104 q7.5 -6 15 0 q0 7.5 -7.5 8.6 q-7.5 -1.1 -7.5 -8.6Z" fill="#3b3029"/>
-      <path d="M100 113 q0 5 -6 5 M100 113 q0 5 6 5" fill="none" stroke="#3b3029"
+      <ellipse cx="100" cy="110" rx="19" ry="14.5" fill="#fbe0bd"/>
+      <path d="M92.5 104 q7.5 -6 15 0 q0 7.5 -7.5 8.6 q-7.5 -1.1 -7.5 -8.6Z" fill="#4a2c17"/>
+      <path d="M100 113 q0 5 -6 5 M100 113 q0 5 6 5" fill="none" stroke="#4a2c17"
         stroke-width="2.2" stroke-linecap="round"/>
-      ${glad ? `<path d="M91 119 q9 8 18 0" fill="none" stroke="#3b3029" stroke-width="2.2" stroke-linecap="round"/>
-                <ellipse cx="67" cy="103" rx="8" ry="5" fill="#f0a99c" opacity=".45"/>
-                <ellipse cx="133" cy="103" rx="8" ry="5" fill="#f0a99c" opacity=".45"/>` : ""}
-      ${a.eye === "sad" ? `<path d="M93 121 q7 -5 14 0" fill="none" stroke="#3b3029" stroke-width="2" stroke-linecap="round"/>` : ""}
+      ${glad ? `<path d="M89 117 q11 13 22 0 q-11 5 -22 0Z" fill="#4a2c17"/>
+                <ellipse cx="100" cy="122" rx="6" ry="5.4" fill="#f4a0a8"/>
+                <path d="M100 118 v7" stroke="#e0848f" stroke-width="1.2" stroke-linecap="round"/>
+                <ellipse cx="67" cy="103" rx="8" ry="5" fill="#f4a0a8" opacity=".55"/>
+                <ellipse cx="133" cy="103" rx="8" ry="5" fill="#f4a0a8" opacity=".55"/>` : ""}
+      ${a.eye === "sad" ? `<path d="M93 121 q7 -5 14 0" fill="none" stroke="#4a2c17" stroke-width="2" stroke-linecap="round"/>` : ""}
     </g>
   </g>
 
   ${mood.id === "sleepy"
-    ? `<text x="152" y="56" font-size="17" fill="#bfae92" class="lk-zzz">z</text>
-       <text x="168" y="38" font-size="13" fill="#cfc0a6" class="lk-zzz" style="animation-delay:.7s">z</text>` : ""}
+    ? `<text x="152" y="56" font-size="17" fill="#c9a273" class="lk-zzz">z</text>
+       <text x="168" y="38" font-size="13" fill="#dab88f" class="lk-zzz" style="animation-delay:.7s">z</text>` : ""}
   ${mood.id === "sulk"
-    ? `<text x="138" y="48" font-size="13" fill="#a1937c">ぷいっ</text>` : ""}
+    ? `<text x="138" y="48" font-size="13" fill="#b08a5e">ぷいっ</text>` : ""}
   ${mood.id === "party"
     ? `<text x="24" y="48" font-size="22">🎉</text><text x="152" y="42" font-size="20">🎂</text>` : ""}
   ${mood.id === "treasure"

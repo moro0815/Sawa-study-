@@ -57,6 +57,7 @@ const defaults = () => ({
   srvToken: "",              // サーバー自動バックアップの合言葉
   srvLastAt: null,           // 最後にサーバーへ預けた日時
   srvLastError: "",
+  personaPinned: false,   // 自分で相手を選んだか(選んだら勝手に切り替えない)
   pendingConf: null,
   lastConf: null,
 });
@@ -815,11 +816,15 @@ async function send(override) {
   busy = true; $("#send").disabled = true;
 
   // 人格の自動提案(押しつけない)
+  // ★自分で選んだ相手からは、勝手に離れない。
+  //   例外は「つらそうな合図」のときだけ — これは comfort の方向にしか動かない。
   const suggested = suggestPersona(text);
-  if (suggested !== S.persona && !override) {
+  const maySwitch = suggested && suggested !== S.persona && !override
+    && (!S.personaPinned || isDistress(text));
+  if (maySwitch) {
     const p = PERSONAS[suggested];
     toast(`${p.emoji} ${p.name}(${p.role})に切り替えました`);
-    S.persona = suggested; renderPersona();
+    S.persona = suggested; S.personaPinned = false; renderPersona();
   }
 
   let content, imgUrl = null;
@@ -1060,7 +1065,7 @@ function renderHome() {
       <span class="pp-e">${p.emoji}</span><span class="pp-n">${p.name}</span>
       <span class="pp-r">${p.role}</span><span class="pp-need">${p.need}を支える</span></button>`).join("");
   $$("[data-persona]").forEach((b) => b.onclick = () => {
-    S.persona = b.dataset.persona; save(); renderHome(); renderPersona(); go("study");
+    S.persona = b.dataset.persona; S.personaPinned = true; save(); renderHome(); renderPersona(); go("study");
     if (!S.chat.length) addMsg("ai", PERSONAS[S.persona].intro);
   });
 
@@ -1078,7 +1083,7 @@ function renderPersona() {
   $("#personaBar").innerHTML = Object.values(PERSONAS).map((p) =>
     `<button class="${S.persona === p.id ? "on" : ""}" data-pb="${p.id}" style="${S.persona === p.id ? `color:${p.color}` : ""}">${p.emoji} ${p.name}</button>`).join("");
   $$("[data-pb]").forEach((b) => b.onclick = () => {
-    S.persona = b.dataset.pb; save(); renderPersona(); renderHome();
+    S.persona = b.dataset.pb; S.personaPinned = true; save(); renderPersona(); renderHome();
     addMsg("ai", PERSONAS[S.persona].intro);
   });
   renderLukeMini();
@@ -1187,7 +1192,7 @@ function renderDiag(conceptId) {
   $("#diagResult").innerHTML = html;
   const btn = $("#askDiag");
   if (btn) btn.onclick = () => {
-    S.persona = "sensei"; renderPersona(); go("study");
+    S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
     send(`「${c.n}」がわかりません。診断だと「${sus[0].concept.n}」(${sus[0].concept.g})が原因かもしれないそうです。そこから確認したいです。`);
   };
 }
@@ -1820,11 +1825,11 @@ function init() {
   // ナビ
   $$(".nb").forEach((b) => b.onclick = () => go(b.dataset.go));
   $("#askHomework").onclick = () => {
-    S.persona = "sensei"; renderPersona(); go("study");
+    S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
     send("今日の宿題を出してください。学校のぶんと合わせて、無理のない量でお願いします。");
   };
   $("#uploadHomework").onclick = () => { go("study"); showScanHelp(); };
-  $("#startStudy").onclick = () => { S.persona = "sensei"; renderPersona(); go("study"); send("今日の分をやりたいです。まず何から?"); };
+  $("#startStudy").onclick = () => { S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study"); send("今日の分をやりたいです。まず何から?"); };
 
   // チャット
   $("#send").onclick = () => send();
@@ -2084,7 +2089,7 @@ function renderLearn() {
       ${recent.has(a.id) ? `<span class="act-tag">最近やった</span>` : ""}</button>`).join("");
     ab.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => {
       const a = ACT_MAP[b.dataset.act];
-      S.persona = "sensei"; renderPersona(); go("study");
+      S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
       send(`今日は「${a.name}」のやり方でお願いします。(${a.what})`);
     });
   }
@@ -2340,7 +2345,7 @@ function renderEnglish() {
       ${t.lv > lv ? `<span class="cv-tag">むずかしめ</span>` : ""}</button>`).join("");
     cb.querySelectorAll("[data-cv]").forEach((b) => b.onclick = () => {
       const t = CONV_TOPICS.find((x) => x.id === b.dataset.cv);
-      S.persona = "aibou"; renderPersona(); go("study");
+      S.persona = "aibou"; S.personaPinned = true; renderPersona(); go("study");
       send(`英語で話す練習をしたいです。お題は「${t.name}」。まず ${t.q[0]} から聞いてください。`
          + `話している間は直さないで、終わってから2〜3点だけ教えてください。`);
     });
@@ -2369,7 +2374,7 @@ function renderEnglish() {
       </div>`).join("")}</div>` : ""}`;
     wb.querySelectorAll("[data-say]").forEach((b) => b.onclick = () => speakSafe(b.dataset.say));
     const ws = $("#wdStart");
-    if (ws) ws.onclick = () => { S.persona = "sensei"; renderPersona(); go("study");
+    if (ws) ws.onclick = () => { S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
       send("今日ぶんの英単語をテストしてください。1語ずつ、確信度を聞いてから進めてください。"); };
   }
 
@@ -2399,7 +2404,7 @@ function renderEnglish() {
     }).join("");
     tb.querySelectorAll("[data-trap]").forEach((b) => b.onclick = () => {
       const t = GRAMMAR_TRAPS.find((x) => x.id === b.dataset.trap);
-      S.persona = "sensei"; renderPersona(); go("study");
+      S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
       send(`英語の「${t.name}」を練習したいです。まず、なぜ日本語だとまちがえるのかを教えてから、問題を出してください。`);
     });
   }
@@ -2548,7 +2553,7 @@ function startSayDrill(p) {
         <audio controls src="${r.url}"></audio>
         <div class="dr-ab"><button class="btn btn-sm ghost" id="cmpAsk">先生に聞いてみる</button></div></div>`;
       $("#drOut").querySelectorAll("[data-say]").forEach((b) => b.onclick = () => speakSafe(b.dataset.say));
-      $("#cmpAsk").onclick = () => { S.persona = "sensei"; renderPersona(); go("study");
+      $("#cmpAsk").onclick = () => { S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
         send(`英語の「${p.name}」の発音を練習しています。「${word}」を言ってみました。口の形をもう一度教えてください。カタカナは使わないでください。`); };
     } else {
       const r = await recStart();
@@ -2935,7 +2940,7 @@ function renderHomework() {
 function startHomework(id) {
   const a = S.homework.find((x) => x.id === id);
   if (!a) return;
-  S.persona = "sensei"; renderPersona(); go("study");
+  S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
   const next = a.items.find((i) => i.status === "todo") || a.items[0];
   send(`「${a.title}」の${next.n}問目からやりたいです。答えは先に言わないで、一緒に進めてください。`);
 }
@@ -2943,7 +2948,7 @@ function startHomework(id) {
 function askHomeworkHelp(id) {
   const a = S.homework.find((x) => x.id === id);
   if (!a) return;
-  S.persona = "sensei"; renderPersona(); go("study");
+  S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
   send(`「${a.title}」でわからないところがあります。どこがわからないか一緒に見つけてください。`);
 }
 
