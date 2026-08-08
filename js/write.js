@@ -65,6 +65,108 @@ const KANJI_SEED = [
   { a: "蒸", r: "じょう", ex: "水が◯発する",   w: "理科で使う" },
 ];
 
+/* ── つづりの種 ────────────────────────────────────────
+   ★ここが空だった。英語タブでAIが登録した語からしか出ないので、
+     使い始めた日は1問も出ませんでした。設計漏れです。
+
+   選び方は「よく出る語」ではなく **「聞けば分かるのに、書けない語」** です。
+   中学生が実際に落とすのは次の5種類なので、そこに絞っています。
+     ・音にならない字がある(know の k、write の w)
+     ・ie / ei の並び(believe と receive)
+     ・子音を重ねる(beginning、stopped)
+     ・-tion / -sion / -ous の語尾
+     ・不規則動詞の過去形(bought、taught) */
+
+const SPELL_SEED = [
+  /* 音にならない字がある */
+  { a: "know",      m: "知っている",   ex: "I know his name.",            w: "先頭の k は読まない" },
+  { a: "write",     m: "書く",         ex: "Write your name here.",       w: "先頭の w は読まない" },
+  { a: "listen",    m: "聞く",         ex: "Listen to me.",               w: "t は読まない" },
+  { a: "answer",    m: "答え・答える", ex: "Answer the question.",        w: "w は読まない" },
+  { a: "island",    m: "島",           ex: "Japan is an island country.", w: "s は読まない" },
+  { a: "science",   m: "科学・理科",   ex: "I like science.",             w: "c は読まない。獣医に必須" },
+  { a: "night",     m: "夜",           ex: "Good night.",                 w: "gh は読まない" },
+  { a: "eight",     m: "8",            ex: "I have eight pens.",          w: "gh は読まない" },
+  { a: "daughter",  m: "娘",           ex: "She is my daughter.",         w: "gh は読まない" },
+  { a: "half",      m: "半分",         ex: "Half of them are dogs.",      w: "l は読まない" },
+  { a: "hour",      m: "時間",         ex: "one hour",                    w: "h は読まない" },
+  { a: "climb",     m: "登る",         ex: "climb a mountain",            w: "最後の b は読まない" },
+
+  /* ie / ei の並び */
+  { a: "believe",   m: "信じる",       ex: "I believe you.",              w: "ie の順。receive と逆" },
+  { a: "receive",   m: "受け取る",     ex: "I receive a letter.",         w: "ei の順。believe と逆" },
+  { a: "friend",    m: "友だち",       ex: "She is my friend.",           w: "ie の順。frend ではない" },
+  { a: "piece",     m: "1つ・かけら",  ex: "a piece of paper",            w: "ie の順" },
+  { a: "field",     m: "野原・分野",   ex: "in the field of medicine",    w: "ie の順" },
+
+  /* 子音を重ねる */
+  { a: "beginning", m: "はじまり",     ex: "at the beginning",            w: "n を2つ重ねる" },
+  { a: "stopped",   m: "止まった",     ex: "The bus stopped.",            w: "p を2つ重ねる" },
+  { a: "running",   m: "走っている",   ex: "The dog is running.",         w: "n を2つ重ねる" },
+  { a: "planned",   m: "計画した",     ex: "We planned a trip.",          w: "n を2つ重ねる" },
+  { a: "different", m: "ちがう",       ex: "They are different.",         w: "f を2つ重ねる" },
+  { a: "necessary", m: "必要な",       ex: "Sleep is necessary.",         w: "c は1つ、s は2つ" },
+  { a: "tomorrow",  m: "明日",         ex: "See you tomorrow.",           w: "m は1つ、r は2つ" },
+  { a: "beautiful", m: "美しい",       ex: "a beautiful cat",             w: "eau の並び" },
+
+  /* 語尾でつまずく */
+  { a: "question",  m: "質問",         ex: "Answer the question.",        w: "-tion" },
+  { a: "station",   m: "駅",           ex: "at the station",              w: "-tion" },
+  { a: "information", m: "情報",       ex: "useful information",          w: "-tion。数えられない" },
+  { a: "education", m: "教育",         ex: "school education",            w: "-tion" },
+  { a: "decision",  m: "決定",         ex: "make a decision",             w: "-sion" },
+  { a: "famous",    m: "有名な",       ex: "a famous doctor",             w: "-ous" },
+  { a: "dangerous", m: "危険な",       ex: "a dangerous animal",          w: "-ous" },
+  { a: "delicious", m: "おいしい",     ex: "This is delicious.",          w: "-ous" },
+
+  /* 不規則動詞の過去形 */
+  { a: "bought",    m: "買った",       ex: "I bought a book.",            w: "buy の過去。ough の並び" },
+  { a: "brought",   m: "持ってきた",   ex: "She brought her dog.",        w: "bring の過去" },
+  { a: "caught",    m: "つかまえた",   ex: "I caught a fish.",            w: "catch の過去。augh の並び" },
+  { a: "taught",    m: "教えた",       ex: "He taught me English.",       w: "teach の過去" },
+  { a: "thought",   m: "思った",       ex: "I thought so.",               w: "think の過去" },
+  { a: "wrote",     m: "書いた",       ex: "I wrote a letter.",           w: "write の過去。w は読まない" },
+  { a: "began",     m: "はじめた",     ex: "The class began.",            w: "begin の過去" },
+
+  /* 中学でよく落とす基本語 */
+  { a: "favorite",  m: "いちばん好きな", ex: "my favorite animal",        w: "" },
+  { a: "restaurant", m: "レストラン",  ex: "a good restaurant",           w: "au の並び" },
+  { a: "February",  m: "2月",          ex: "in February",                 w: "r を落としやすい" },
+  { a: "Wednesday", m: "水曜日",       ex: "on Wednesday",                w: "d は読まない" },
+  { a: "language",  m: "言語",         ex: "the English language",        w: "gu の並び" },
+  { a: "because",   m: "なぜなら",     ex: "because I like it",           w: "au の並び" },
+  { a: "interesting", m: "おもしろい", ex: "an interesting book",         w: "e が3つ" },
+  { a: "remember",  m: "思い出す",     ex: "I remember it.",              w: "" },
+  { a: "important", m: "大切な",       ex: "This is important.",          w: "" },
+  { a: "difficult", m: "むずかしい",   ex: "a difficult question",        w: "f を2つ" },
+  { a: "through",   m: "〜を通って",   ex: "through the door",            w: "though と別。ough の並び" },
+  { a: "enough",    m: "十分な",       ex: "enough water",                w: "ough の並び" },
+  { a: "foreign",   m: "外国の",       ex: "a foreign country",           w: "g は読まない。ei の順" },
+
+  /* 獣医の道でよく使う語 */
+  { a: "animal",    m: "動物",         ex: "I love animals.",             w: "" },
+  { a: "hospital",  m: "病院",         ex: "an animal hospital",          w: "" },
+  { a: "medicine",  m: "薬・医学",     ex: "give the dog medicine",       w: "" },
+  { a: "health",    m: "健康",         ex: "the health of animals",       w: "" },
+  { a: "disease",   m: "病気",         ex: "a serious disease",           w: "ea の並び" },
+  { a: "surgery",   m: "手術",         ex: "The dog had surgery.",        w: "" },
+  { a: "treatment", m: "治療",         ex: "the right treatment",         w: "" },
+  { a: "veterinarian", m: "獣医",      ex: "I want to be a veterinarian.", w: "長い。vet と略す" },
+];
+
+/**
+ * 例文の中の答えを伏せる。
+ * ★これが無いと、つづりの問題で **例文に答えがそのまま出て**しまいます
+ *   (漢字は例文側を ◯ にしてありますが、英語は元の文をそのまま持つため)。
+ * 語尾の変化(-s / -ed / -ing)も一緒に伏せます。
+ */
+function maskAnswer(example, answer) {
+  const a = String(answer || "").trim();
+  if (!a || !example) return example || "";
+  const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(example).replace(new RegExp(esc + "(s|es|ed|ing|d)?", "gi"), "______");
+}
+
 /** 練習項目の入れもの */
 function writeState(S) {
   const w = (S.write ||= {});
@@ -73,6 +175,11 @@ function writeState(S) {
   if (!w.seeded) {
     for (const k of KANJI_SEED) addWriteItem(S, { kind: "kanji", answer: k.a, reading: k.r, example: k.ex, note: k.w });
     w.seeded = true;
+  }
+  // ★つづりの種は後から足したので、seeded 済みの端末にも入るように別で見る
+  if (!w.seededSpell) {
+    for (const k of SPELL_SEED) addWriteItem(S, { kind: "spell", answer: k.a, reading: k.m, example: k.ex, note: k.w });
+    w.seededSpell = true;
   }
   return w;
 }
@@ -188,9 +295,16 @@ function writePromptBlock(S) {
      筆圧が取れる端末では線の太さが変わります(iPad + Pencil)。
      touch-action:none を付けないと、書こうとしてページが動きます。 */
 
-let padCtx = null, padStrokes = [], padCur = null, padOpen = false;
+let padCtx = null, padStrokes = [], padCur = null, padMode = "kanji";
 
-function padInit(canvas) {
+/**
+ * @param {"kanji"|"spell"} mode
+ * ★漢字は正方形のマス目、英語は横長の罫線に分けます。
+ *   veterinarian のような長い語を正方形に押しこむと、
+ *   iPhone では字が小さくなりすぎて、書けたかどうか自分で判定できません。
+ */
+function padInit(canvas, mode) {
+  padMode = mode === "spell" ? "spell" : "kanji";
   const dpr = Math.min(3, window.devicePixelRatio || 1);
   const r = canvas.getBoundingClientRect();
   canvas.width = Math.round(r.width * dpr);
@@ -235,14 +349,29 @@ function padInit(canvas) {
 function padRedraw(canvas) {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   padCtx.clearRect(0, 0, w, h);
-  // 漢字練習帳のマス目
   padCtx.save();
   padCtx.strokeStyle = "#dfe3ea"; padCtx.lineWidth = 1;
   padCtx.strokeRect(.5, .5, w - 1, h - 1);
-  padCtx.setLineDash([5, 5]); padCtx.strokeStyle = "#e9ecf2";
+  padCtx.strokeStyle = "#e9ecf2";
   padCtx.beginPath();
-  padCtx.moveTo(w / 2, 0); padCtx.lineTo(w / 2, h);
-  padCtx.moveTo(0, h / 2); padCtx.lineTo(w, h / 2);
+  if (padMode === "spell") {
+    /* 英語のノートと同じ4本線。上から
+       上線 / 中央の点線(小文字の高さ) / 基準線 / 下線(g や y の下がる部分) */
+    const top = h * 0.22, mid = h * 0.45, base = h * 0.68, low = h * 0.88;
+    padCtx.setLineDash([]);
+    padCtx.moveTo(0, top);  padCtx.lineTo(w, top);
+    padCtx.moveTo(0, base); padCtx.lineTo(w, base);
+    padCtx.stroke();
+    padCtx.beginPath();
+    padCtx.setLineDash([5, 5]);
+    padCtx.moveTo(0, mid); padCtx.lineTo(w, mid);
+    padCtx.moveTo(0, low); padCtx.lineTo(w, low);
+  } else {
+    // 漢字練習帳のマス目
+    padCtx.setLineDash([5, 5]);
+    padCtx.moveTo(w / 2, 0); padCtx.lineTo(w / 2, h);
+    padCtx.moveTo(0, h / 2); padCtx.lineTo(w, h / 2);
+  }
   padCtx.stroke();
   padCtx.restore();
 

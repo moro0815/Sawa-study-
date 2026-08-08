@@ -1410,6 +1410,10 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 #wpCanvas { width: min(100%, 62vh); aspect-ratio: 1 / 1; max-height: 100%;
   background: var(--card); border-radius: 14px; box-shadow: var(--sh);
   touch-action: none; cursor: crosshair; }
+/* ★つづりは横長。veterinarian のような長い語を正方形に押しこむと、
+   iPhone では字が小さくなりすぎて自分で判定できなくなる */
+#wpCanvas.spell { width: 100%; aspect-ratio: 5 / 2; }
+@media (min-width: 900px) { #wpCanvas.spell { aspect-ratio: 4 / 1; } }
 .wp-answer { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,.94);
   border: 1px solid var(--line); border-radius: 12px; padding: 6px 10px; text-align: center; }
 .wp-a { display: block; font-size: 42px; font-weight: 800; line-height: 1.1;

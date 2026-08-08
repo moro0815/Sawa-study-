@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v30";
+const APP_VERSION = "v31";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1357,7 +1357,7 @@ function showWriteItem() {
        <div class="wp-ex">${esc((wpItem.ex || "").replace("◯", "◯"))}</div>
        <div class="wp-hint">◯ のところに入る漢字を書いてください</div>`
     : `<div class="wp-read">${esc(wpItem.r || "この意味の単語")}</div>
-       <div class="wp-ex">${esc(wpItem.ex || "")}</div>
+       <div class="wp-ex">${esc(maskAnswer(wpItem.ex, wpItem.a))}</div>
        <div class="wp-hint">つづりを書いてください<button class="wp-say" id="wpSay">🔊 聞く</button></div>`;
 
   if (wpItem.kind === "spell") {
@@ -1367,7 +1367,8 @@ function showWriteItem() {
   }
 
   const cv = $("#wpCanvas");
-  requestAnimationFrame(() => padInit(cv));
+  cv.classList.toggle("spell", wpItem.kind === "spell");
+  requestAnimationFrame(() => padInit(cv, wpItem.kind));
   wpStart = Date.now();
   renderPadBtns();
   $("#wpNote").textContent = wpItem.w || "";
