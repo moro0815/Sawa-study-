@@ -22,6 +22,9 @@ const defaults = () => ({
   dailyMinutes: null,    // 1日の学習時間(分)
   goals: [],             // [{text, deadline, at}]
   sessions: [],          // [{date, answered, correct, minutes}]
+  career: DEFAULT_CAREER,      // 今の志望(変数。固定しない)
+  dreamHistory: [],            // [{career, at, note}] 過去の夢も消さずに残す
+  careerInterests: [],         // 気になっている進路
   costSchool: "hokudai",
   parentPeriod: 7,
   pendingConf: null,
@@ -49,6 +52,22 @@ function save() {
 }
 function mem(id) { return (S.mem[id] ||= newMemState(id)); }
 const today = () => new Date().toISOString().slice(0, 10);
+
+/** 今の志望 */
+function curCareer() { return CAREER_MAP[S.career] || CAREER_MAP[DEFAULT_CAREER]; }
+
+/** 志望を変える。変更は「成長」として記録し、絶対に引き止めない */
+function setCareer(id, note) {
+  const to = CAREER_MAP[id]; if (!to) return null;
+  const fromId = S.career;
+  if (!S.dreamHistory.length) S.dreamHistory.push({ career: fromId, at: Date.now(), note: "最初の志望" });
+  if (fromId === id) { save(); return null; }
+  const msg = dreamChangeMessage(fromId, id, S.mem);
+  S.career = id;
+  S.dreamHistory.push({ career: id, at: Date.now(), note: note || "" });
+  save(); renderAll();
+  return msg;
+}
 
 /** 志望校との比較は必ず河合塾(全統)基準に換算した値で行う */
 function kawaiHensa() {
@@ -183,6 +202,45 @@ async function runTool(name, input) {
       };
     }
 
+    case "change_career": {
+      const c = CAREER_MAP[input.career_id];
+      if (!c) return { error: "unknown career_id", available: CAREERS.map((x) => x.id) };
+      if (input.interest_only) {
+        if (!S.careerInterests.includes(c.id)) S.careerInterests.push(c.id);
+        save(); renderAll();
+        return { added_to_interests: c.name,
+          instruction: "「気になるリスト」に入れました。まだ決めなくていいと伝えてください。迷っている状態は健全です。" };
+      }
+      const msg = setCareer(c.id, input.note);
+      toast(`志望を「${c.name}」に変えました`);
+      return msg ? {
+        changed: msg.headline,
+        transfer_rate: Math.round((msg.rate ?? 0) * 100) + "%",
+        subjects_to_add: msg.up.map((x) => x.name),
+        subjects_less_needed: msg.down.map((x) => x.name),
+        instruction:
+          "【重要】引き止めない、疑わない、理由を問い詰めない。まず『そう思えるようになったんだね』と変化そのものを認めてください。" +
+          `そのうえで、これまでの学習の約${Math.round((msg.rate ?? 0) * 100)}%が新しい進路にも活きることを具体的に伝え、無駄になっていないと安心させてください。` +
+          "前の夢を否定したり、蒸し返したりしないこと。",
+      } : { changed: c.name };
+    }
+
+    case "explore_careers": {
+      const tm = transferMap(S.mem, S.career);
+      return {
+        current: curCareer().name,
+        note: "迷っている状態は健全な探索です。決めさせようとしないでください。",
+        careers: CAREERS.filter((c) => !input.field || c.field.includes(input.field)).map((c) => ({
+          id: c.id, name: c.name, field: c.field, faculty: c.faculty,
+          key_subjects: c.key, desc: c.desc, high_school: c.hs,
+          transfer_rate: c.id === S.career ? "現在の志望"
+            : Math.round((tm.find((t) => t.career.id === c.id)?.rate ?? 0) * 100) + "%",
+        })),
+        exploration_questions: EXPLORATION_PROMPTS,
+        instruction: "転用率(transfer_rate)は、今まで積み上げた学習がその進路にどれだけ活きるかです。ほとんどが高い数字になります。『変えても無駄にならない』ことを伝える材料に使ってください。",
+      };
+    }
+
     case "set_goal": {
       S.goals.push({ text: input.text, deadline: input.deadline || null, at: Date.now() });
       save(); renderPlan();
@@ -284,7 +342,10 @@ async function send(override) {
   try {
     const res = await chatWithTools({
       apiKey: S.apiKey,
-      system: buildSystemPrompt(S.persona, { name: S.name, grade: S.grade }, statusSummary()),
+      system: buildSystemPrompt(S.persona, {
+        name: S.name, grade: S.grade, career: curCareer(),
+        pastDreams: (S.dreamHistory || []).map((d) => CAREER_MAP[d.career]?.name).filter(Boolean),
+      }, statusSummary()),
       messages: S.apiMessages,
       tools: TOOLS,
       onDelta: (t) => {
@@ -343,11 +404,14 @@ function renderHome() {
   // 夢との距離
   const gi = Math.max(0, GRADES.indexOf(S.grade));
   const sm = subjectMastery(S.mem);
+  const cw = careerWeights(S.career);
   let cov = 0, n = 0;
-  for (const k in sm) { if (SUBJECTS[k].vetWeight >= 0.7) { cov += sm[k].coverage; n++; } }
+  for (const k in sm) { if ((cw[k] ?? 0.5) >= 0.7) { cov += sm[k].coverage; n++; } }
   const progress = ((gi / 6) * 0.5 + (n ? cov / n : 0) * 0.5) * 100;
   $("#dreamFill").style.width = Math.min(100, progress) + "%";
   $("#dreamNow").textContent = S.grade;
+  const cc = curCareer();
+  $("#dreamGoal").textContent = `${cc.emoji} ${cc.name}`;
   const rm = ROADMAP[gi];
   $("#dreamNote").textContent = rm ? `${S.grade}のテーマ:${rm.theme}` : "";
 
@@ -592,7 +656,7 @@ function renderGrade() {
   // 限界効用
   const testScores = {};
   for (const g of S.grades) testScores[g.subject] = g.score;
-  const mr = marginalReturn(S.mem, testScores);
+  const mr = marginalReturn(S.mem, testScores, S.career);
   const max = mr[0]?.score || 1;
   $("#marginalList").innerHTML = mr.map((m, i) =>
     `<div class="mr-item"><span class="mr-rank">${i + 1}</span>
@@ -611,8 +675,105 @@ function renderGrade() {
   }).join("");
 }
 
+function renderCareer() {
+  const c = curCareer();
+  $("#currentCareer").innerHTML = `
+    <div class="cc">
+      <span class="cc-e">${c.emoji}</span>
+      <div class="cc-b"><div class="cc-n">${esc(c.name)}</div>
+        <div class="cc-f">${esc(c.faculty)}${c.license && c.license !== "—" ? " ・ " + esc(c.license) : ""}</div>
+        <div class="cc-k">${c.key.length ? "特に効く科目:" + c.key.map(esc).join("・") : ""}</div></div>
+    </div>
+    <p class="cc-desc">${esc(c.desc)}</p>
+    ${c.hs ? `<div class="cc-hs">💡 ${esc(c.hs)}</div>` : ""}`;
+
+  /* 転用率 */
+  const tm = transferMap(S.mem, S.career);
+  const hasData = tm.some((t) => t.rate != null);
+  $("#transferList").innerHTML = !hasData
+    ? `<p class="empty">学習を始めると、ここに「別の道でも何%活きるか」が出ます。</p>`
+    : tm.slice(0, 8).map((t) => {
+        const pct = Math.round((t.rate ?? 0) * 100);
+        return `<div class="tr-item"><span class="tr-e">${t.career.emoji}</span>
+          <span class="tr-n">${esc(t.career.name)}</span>
+          <span class="tr-bar"><i style="width:${pct}%"></i></span>
+          <span class="tr-p">${pct}%</span></div>`;
+      }).join("") + `<p class="cs" style="margin-top:10px">
+        主要教科の土台はほとんどの進路で共通しています。<b>だから今の勉強は、どの道に進んでも無駄になりません。</b></p>`;
+
+  /* 志望の記録 */
+  const hist = S.dreamHistory || [];
+  $("#dreamHistory").innerHTML = hist.length
+    ? hist.map((h, i) => {
+        const cc = CAREER_MAP[h.career];
+        if (!cc) return "";
+        const d = new Date(h.at).toISOString().slice(0, 10);
+        return `<div class="dh ${i === hist.length - 1 ? "now" : ""}">
+          <span class="dh-e">${cc.emoji}</span>
+          <div><div class="dh-n">${esc(cc.name)}${i === hist.length - 1 ? " <span class='dh-cur'>今</span>" : ""}</div>
+          <div class="dh-d">${d}${h.note ? " ・ " + esc(h.note) : ""}</div></div></div>`;
+      }).join("")
+    : `<p class="empty">まだ変更はありません。変えたときにここに残ります。</p>`;
+  if (S.careerInterests?.length) {
+    $("#dreamHistory").innerHTML += `<div class="cs" style="margin-top:10px"><b>気になっている道:</b> ` +
+      S.careerInterests.map((i) => CAREER_MAP[i] ? `${CAREER_MAP[i].emoji}${esc(CAREER_MAP[i].name)}` : "").join(" / ") + `</div>`;
+  }
+
+  /* つぶしが効く教科 */
+  $("#versatilityList").innerHTML = versatility().map((v) =>
+    `<div class="vs"><span>${v.emoji} ${esc(v.name)}</span>
+      <span class="vs-bar"><i style="width:${v.score * 100}%"></i></span>
+      <span class="vs-p">${Math.round(v.score * 100)}</span></div>`).join("");
+}
+
+function renderExplorer() {
+  const box = $("#careerExplorer");
+  const tm = transferMap(S.mem, S.career);
+  const rateOf = (id) => tm.find((t) => t.career.id === id)?.rate;
+  const fields = [...new Set(CAREERS.map((c) => c.field))];
+  box.innerHTML = fields.map((f) => `<div class="cex-f">${esc(f)}</div>` +
+    CAREERS.filter((c) => c.field === f).map((c) => {
+      const on = c.id === S.career;
+      const r = rateOf(c.id);
+      return `<div class="cex ${on ? "on" : ""}" data-cex="${c.id}">
+        <span class="cex-e">${c.emoji}</span>
+        <div class="cex-b"><div class="cex-n">${esc(c.name)}${on ? " <span class='cex-cur'>今の志望</span>" : ""}</div>
+          <div class="cex-f2">${esc(c.faculty)}</div>
+          <div class="cex-d">${esc(c.desc)}</div>
+          ${c.hs ? `<div class="cex-hs">${esc(c.hs)}</div>` : ""}</div>
+        ${!on && r != null ? `<span class="cex-r">積み上げの<br><b>${Math.round(r * 100)}%</b><br>が活きる</span>` : ""}</div>`;
+    }).join("")).join("");
+
+  $$("[data-cex]").forEach((el) => el.onclick = () => {
+    const id = el.dataset.cex;
+    if (id === S.career) return;
+    const c = CAREER_MAP[id];
+    if (!confirm(`志望を「${c.name}」に変えますか?\n\n前の志望は記録として残ります。いつでも戻せます。`)) return;
+    const msg = setCareer(id);
+    if (msg) showDreamChange(msg);
+  });
+}
+
+/** 志望を変えたときのメッセージ。変化そのものを肯定する */
+function showDreamChange(msg) {
+  const el = document.createElement("div");
+  el.className = "dream-modal";
+  el.innerHTML = `<div class="dm-box">
+    <div class="dm-h">${msg.from.emoji} → ${msg.to.emoji}</div>
+    <div class="dm-t">${esc(msg.headline)}</div>
+    <p class="dm-affirm">${esc(msg.affirm)}</p>
+    <div class="dm-carry"><b>${esc(msg.carry)}</b></div>
+    ${msg.up.length ? `<p class="dm-sub">これから少し厚くするとよい教科:${msg.up.map((x) => x.emoji + x.name).join("・")}</p>` : ""}
+    ${msg.down.length ? `<p class="dm-sub">比重が下がる教科:${msg.down.map((x) => x.emoji + x.name).join("・")}</p>` : ""}
+    <p class="dm-keep">${esc(msg.keepPast)}</p>
+    <button class="btn btn-primary" id="dmClose">わかった</button></div>`;
+  document.body.appendChild(el);
+  el.querySelector("#dmClose").onclick = () => el.remove();
+}
+
 function renderPlan() {
   const gi = Math.max(0, GRADES.indexOf(S.grade));
+  renderCareer();
 
   /* カウントダウン */
   const cd = countdownToExam(S.grade);
@@ -786,6 +947,25 @@ function renderParent() {
     ${st ? `<div class="wr-msg">${esc(st.advice)}</div>` : `<div class="wr-msg">模試の偏差値を入力すると、志望校との距離と併願プランが出ます。<br>
       <b>模試の種類によって偏差値は10〜15変わります。</b>大学の偏差値表は河合塾基準なので、進研模試の数字をそのまま比べると実力を大きく見誤ります。</div>`}`;
 
+  /* 志望の状況 */
+  const ds = dreamStatus(S);
+  if (ds) {
+    $("#parentDream").innerHTML = `
+      <div class="wr-row"><span>今の志望</span><b>${ds.current.emoji} ${esc(ds.current.name)}</b></div>
+      <div class="wr-row"><span>これまでの変更回数</span><b>${ds.changes} 回</b></div>
+      ${ds.interests.length ? `<div class="wr-row"><span>気になっている道</span><b>${ds.interests.map((i) => CAREER_MAP[i]?.name).filter(Boolean).join("、")}</b></div>` : ""}
+      <div class="wr-msg">${esc(ds.read)}</div>`;
+  }
+
+  /* 夢が変わったときのガイド */
+  $("#dreamFacts").innerHTML = DREAM_CHANGE_GUIDE.facts.map((f) => `<div class="fact">📊 ${esc(f)}</div>`).join("");
+  $("#dreamSayGrid").innerHTML = `
+    <div class="say bad"><h3>✕ 避けたい</h3><ul>${DREAM_CHANGE_GUIDE.avoid.map((a) =>
+      `<li>${esc(a.say)}<span class="say-why">${esc(a.why)}</span></li>`).join("")}</ul></div>
+    <div class="say good"><h3>○ 効果がある</h3><ul>${DREAM_CHANGE_GUIDE.good.map((a) =>
+      `<li>${esc(a.say)}<span class="say-why">${esc(a.why)}</span></li>`).join("")}</ul></div>`;
+  $("#dreamParentNote").textContent = DREAM_CHANGE_GUIDE.note;
+
   /* テキストレポート */
   $("#reportPre").textContent = buildTextReport(S, days);
 
@@ -884,6 +1064,13 @@ function init() {
     S.dailyMinutes = v; save(); renderTimeProjection();
   };
   $("#timerBtn").onclick = toggleTimer;
+  $("#dreamSwitch").onclick = () => { go("plan"); setTimeout(() => $("#currentCareer").scrollIntoView({ behavior:"smooth", block:"center" }), 100); };
+  $("#openExplorer").onclick = () => {
+    const box = $("#careerExplorer");
+    box.hidden = !box.hidden;
+    $("#openExplorer").textContent = box.hidden ? "ほかの道も見てみる(20の進路)" : "閉じる";
+    if (!box.hidden) renderExplorer();
+  };
   $$("#periodSeg .seg-btn").forEach((b) => b.onclick = () => {
     S.parentPeriod = Number(b.dataset.days); save(); renderParent();
   });

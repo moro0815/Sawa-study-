@@ -142,6 +142,50 @@ const EVIDENCE = [
     rule: "定期テスト・模試の前日に『伴走者モード』が書き出しワークを提案する。",
   },
   {
+    id: "foreclosure",
+    title: "夢を早く固定しすぎるリスク(早期完了)",
+    en: "Identity Foreclosure — Marcia's Identity Status Theory",
+    finding:
+      "探索を経ないまま職業アイデンティティに早くコミットした状態を「早期完了」と呼ぶ。周囲が肯定し続けている間は安定して見えるが、その支えが崩れた瞬間に、防衛的・硬直的になり、もろくなることが知られている。試されたことのない自己を守ろうとするため。一方、迷いながら探索している状態(モラトリアム)は、思春期の健全な発達過程とされる。",
+    strength: "強い(古典的だが再現性が高い理論)",
+    source: "Marcia, J. E. — Identity Status Theory / Erikson の発達段階理論",
+    rule:
+      "アプリが特定の職業を毎日肯定し続けること自体が『支え』となり、早期完了を強めてしまう。そのため志望は固定値ではなく変数として扱い、いつでも変更でき、過去の志望も記録として残す設計にした。「まだ決めていない」も正式な選択肢として用意する。",
+  },
+  {
+    id: "circumscription",
+    title: "子どもは選択肢を「消して」いく",
+    en: "Gottfredson's Theory of Circumscription and Compromise",
+    finding:
+      "子どもは3〜5歳(大きさと力)、6〜8歳(性役割)、9〜13歳(社会的評価)の各段階で、職業の選択肢を社会的な影響から次々に除外していく(囲い込み)。内面的で固有の自己に基づいて選び直す段階に入るのは14歳以降。つまり12歳は、まだ「消している」途中にいる。",
+    strength: "中〜強(キャリア発達の主要理論)",
+    source: "Gottfredson, L. S. — Theory of Circumscription and Compromise",
+    rule:
+      "ひとつの職業だけを前提にしたシステムは、この『消す』働きを加速させてしまう。20の進路を用意し、動物に近い道からまったく違う道まで並べて、選択肢が消えないようにする。",
+  },
+  {
+    id: "happenstance",
+    title: "キャリアの大半は偶然で決まる",
+    en: "Krumboltz — Planned Happenstance Theory",
+    finding:
+      "キャリアは直線的な計画では決まらず、予期しない出来事に大きく左右される。重要なのは目標を固定することではなく、好奇心・粘り強さ・柔軟性・楽観性・リスクを取る力という5つの態度。この理論では『迷っていること自体が望ましく、理にかなっている』とされる — 迷いがあるからこそ、予期せぬ機会を活かせる。",
+    strength: "中〜強",
+    source: "Krumboltz, J. D. — Planned Happenstance Learning Theory",
+    rule:
+      "伴走者(ナギ)は目標を決めさせにいかない。代わりに探索を促す問いを持ち、『まだ決めていない』を欠点ではなく戦略として扱う。決めていない時期は、どの道にも効く教科を厚くする方針を提示する。",
+  },
+  {
+    id: "aspirationchange",
+    title: "志望はどのくらい変わるのか",
+    en: "Longitudinal studies of adolescent career aspirations",
+    finding:
+      "706名の縦断研究では、志望が安定して高いまま(N=398)のほか、低下(N=136)・上昇(N=102)・安定して低い(N=70)の4つの軌跡が確認された。つまり約3分の1が有意な変化を示す。別の英国の研究では約20%が『決まっていない』状態にあった。変わることも、決まらないことも、標準的な姿。",
+    strength: "中(複数の縦断研究で一貫)",
+    source: "Journal of Vocational Behavior ほか、思春期の志望に関する縦断研究群",
+    rule:
+      "志望が変わったとき、アプリは『変わったこと』を肯定し、この統計を本人にも保護者にも示す。そして積み上げた学習の何%が新しい進路に転用できるかを計算して見せ、『無駄になった』という感覚を数字で否定する。",
+  },
+  {
     id: "interest",
     title: "興味の4段階発達モデル",
     en: "Four-Phase Model of Interest Development",

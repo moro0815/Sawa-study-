@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1c2333">
-<title>沙和ナビ — 獣医への6年計画</title>
+<title>沙和ナビ</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -15,7 +15,7 @@
     <span class="tb-logo">🩺</span>
     <div>
       <h1 class="tb-title">沙和ナビ</h1>
-      <p class="tb-sub" id="tbSub">獣医への6年計画</p>
+      <p class="tb-sub" id="tbSub">6年の伴走</p>
     </div>
   </div>
   <div class="tb-right">
@@ -41,10 +41,11 @@
       <div class="dream-track-bar"><div class="dream-track-fill" id="dreamFill"></div></div>
       <div class="dream-track-labels">
         <span id="dreamNow">中1</span>
-        <span class="dream-goal">🎓 獣医学部</span>
+        <span class="dream-goal" id="dreamGoal">🎓</span>
       </div>
     </div>
     <p class="dream-note" id="dreamNote"></p>
+    <button class="dream-switch" id="dreamSwitch">今の志望を見る・変える</button>
   </div>
 
   <div class="card">
@@ -183,7 +184,7 @@
 
   <div class="card">
     <h2 class="ct">▶ どこに時間を使うと一番効くか</h2>
-    <p class="cs">同じ1時間を、最も合格可能性が上がる場所に投じるための指標です。習得度の穴・テストの得点・獣医学部での重要度を合成しています。</p>
+    <p class="cs">同じ1時間を、最も合格可能性が上がる場所に投じるための指標です。習得度の穴・テストの得点・今の志望での重要度を合成しています。</p>
     <div id="marginalList"></div>
   </div>
 
@@ -196,6 +197,37 @@
 
 <!-- ══════════ 受験 ══════════ -->
 <section id="s-plan" class="screen">
+  <div class="card">
+    <h2 class="ct">▶ 今の志望 <span class="ct-note">いつでも変えられます</span></h2>
+    <div id="currentCareer"></div>
+    <div class="dream-msg">
+      <b>夢は変わっていい。変わるのが普通です。</b><br>
+      縦断研究では、思春期の約<b>3分の1</b>が志望を大きく変え、約<b>20%</b>は「決まっていない」状態にあります。
+      むしろ探索をせずに早く決めきってしまうほうが、あとで揺らいだときにもろくなることが知られています(アイデンティティの早期完了)。<br>
+      このアプリは、今の志望を全力で応援します。同時に、<b>変えることを一度も責めません。</b>
+    </div>
+    <button class="btn btn-ghost" id="openExplorer">ほかの道も見てみる(20の進路)</button>
+    <div id="careerExplorer" hidden></div>
+  </div>
+
+  <div class="card" id="transferCard">
+    <h2 class="ct">▶ もし志望を変えても、積み上げは無駄にならない</h2>
+    <p class="cs">今まで習得した内容が、それぞれの進路にどれだけそのまま活きるかを計算しています。<b>ゼロからやり直しにはなりません。</b></p>
+    <div id="transferList"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 志望の記録</h2>
+    <p class="cs">過去の夢も消さずに残します。<b>変わったことは失敗ではなく成長です。</b></p>
+    <div id="dreamHistory"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ どの道でも効く教科</h2>
+    <p class="cs">20の進路すべてで平均してどれだけ必要かを出しています。迷っている時期は、上位の教科を厚くしておくのが最善の戦略です。</p>
+    <div id="versatilityList"></div>
+  </div>
+
   <div class="card countdown-card">
     <h2 class="ct">▶ 大学受験まで</h2>
     <div class="cd-main"><span class="cd-num" id="cdDays">—</span><span class="cd-unit">日</span></div>
@@ -304,6 +336,19 @@
   </div>
 
   <div class="card accent-card">
+    <h2 class="ct">▶ 志望の状況</h2>
+    <div id="parentDream"></div>
+  </div>
+
+  <div class="card accent-card">
+    <h2 class="ct">▶ 夢が変わったとき、どう反応するか</h2>
+    <p class="cs">ここは保護者が最も反射的に反応してしまう場面です。<b>一言で探索そのものが止まります。</b>まず知っておいていただきたい事実があります。</p>
+    <div id="dreamFacts"></div>
+    <div class="say-grid" id="dreamSayGrid"></div>
+    <div class="dream-note-parent" id="dreamParentNote"></div>
+  </div>
+
+  <div class="card accent-card">
     <h2 class="ct">▶ 声のかけ方(研究にもとづく)</h2>
     <p class="cs">自己決定理論の研究では、統制的な関わり(命令・監視・比較)は意欲を確実に下げ、自律性支援(理由の説明・気持ちの承認・選択肢)は成績と心理的健康の両方を高めます。</p>
     <div class="say-grid">
@@ -365,6 +410,7 @@
 <script src="js/evidence.js"></script>
 <script src="js/curriculum.js"></script>
 <script src="js/memory.js"></script>
+<script src="js/careers.js"></script>
 <script src="js/exam.js"></script>
 <script src="js/admission.js"></script>
 <script src="js/guardian.js"></script>

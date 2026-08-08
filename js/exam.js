@@ -122,13 +122,14 @@ function distanceToSchool(school, currentHensa) {
  * 習得度の穴が大きく、配点が重く、獣医で重要な教科ほど優先度が高い。
  * 同じ1時間を、最も合格可能性が上がる場所に投じるための指標。
  */
-function marginalReturn(memStates, testScores) {
+function marginalReturn(memStates, testScores, careerId) {
   const sm = subjectMastery(memStates);
+  const w = typeof careerWeights === "function" ? careerWeights(careerId) : null;
   const out = [];
   for (const sid in SUBJECTS) {
     if (sid === "skill" || sid === "info") continue;
     const m = sm[sid];
-    const weight = SUBJECTS[sid].vetWeight;
+    const weight = w ? (w[sid] ?? 0.5) : SUBJECTS[sid].vetWeight;
     // 未学習の穴 + 習得度の低さ
     const gap = (1 - m.avgMastery) * 0.6 + (1 - m.coverage) * 0.4;
     const t = testScores?.[sid];
