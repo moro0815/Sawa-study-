@@ -141,10 +141,11 @@
   </div>
   <div class="quickrow" id="quickRow"></div>
   <div class="intake" id="intake">
-    <label class="intake-btn" title="カメラで撮る">
+    <button class="intake-btn" id="cameraBtn" type="button" title="そのまま撮る">
       <span class="intake-ic">📷</span><span class="intake-l">カメラ</span>
-      <input type="file" id="cameraIn" accept="image/*" capture="environment" hidden>
-    </label>
+    </button>
+    <!-- アプリ内カメラが使えない端末だけ、これに戻る -->
+    <input type="file" id="cameraIn" accept="image/*" capture="environment" hidden>
     <label class="intake-btn" title="スキャンした書類を選ぶ">
       <span class="intake-ic">📄</span><span class="intake-l">スキャン</span>
       <input type="file" id="scanIn" accept="image/*,application/pdf" multiple hidden>
@@ -670,6 +671,7 @@
 <script src="js/memory.js"></script>
 <script src="js/luke.js"></script>
 <script src="js/speech.js"></script>
+<script src="js/camera.js"></script>
 <script src="js/english.js"></script>
 <script src="js/careers.js"></script>
 <script src="js/exam.js"></script>

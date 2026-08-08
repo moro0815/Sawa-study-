@@ -1193,3 +1193,41 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .kmap-legend { flex-wrap: wrap; margin: 2px 0 10px; font-size: 11px; }
 .kmap-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .kmap-legend .dot { width: 13px; height: 13px; border-radius: 4px; }
+
+/* ── アプリ内カメラ ───────────────────────────────── */
+.cam { position: fixed; inset: 0; z-index: 300; background: #0b0d0f;
+  display: none; flex-direction: column; }
+.cam.on { display: flex; }
+.cam-stage { position: relative; flex: 1; min-height: 0; background: #000;
+  display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.cam-video, .cam-still { max-width: 100%; max-height: 100%;
+  width: 100%; height: 100%; object-fit: contain; }
+.cam-video.mirror { transform: scaleX(-1); }
+.cam-guide { position: absolute; inset: 8% 5%; border: 2px dashed rgba(255,255,255,.5);
+  border-radius: 12px; pointer-events: none; display: flex; align-items: flex-end;
+  justify-content: center; padding-bottom: 8px; }
+.cam-guide span { font-size: 11.5px; color: #fff; background: rgba(0,0,0,.45);
+  padding: 3px 10px; border-radius: 999px; }
+.cam-msg { color: #e8eaed; font-size: 12px; text-align: center; padding: 8px 14px 0; }
+.cam-strip { display: flex; gap: 6px; padding: 8px 12px 0; overflow-x: auto; }
+.cam-th { position: relative; flex: 0 0 auto; }
+.cam-th img { width: 54px; height: 54px; object-fit: cover; border-radius: 8px;
+  border: 2px solid rgba(255,255,255,.5); display: block; }
+.cam-th b { position: absolute; top: -5px; right: -5px; width: 19px; height: 19px;
+  border-radius: 50%; background: #d94a4a; color: #fff; font-size: 11px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.cam-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
+.cam-b { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 999px;
+  padding: 10px 15px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.cam-b:active { transform: scale(.97); }
+.cam-sp, .cam-flip { flex: 0 0 84px; }
+.cam-x { position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 10px; width: 38px; height: 38px;
+  border-radius: 50%; border: 0; background: rgba(0,0,0,.5); color: #fff;
+  font-size: 16px; line-height: 1; cursor: pointer; z-index: 2; }
+.cam-use { background: var(--green, #2e9e6b); }
+.cam-bar2 { justify-content: center; flex-wrap: wrap; }
+.cam-shutter { width: 66px; height: 66px; border-radius: 50%; background: #fff;
+  border: 4px solid rgba(255,255,255,.45); background-clip: padding-box;
+  cursor: pointer; flex: 0 0 auto; }
+.cam-shutter:active { transform: scale(.93); }

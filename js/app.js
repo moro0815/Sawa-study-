@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v23";
+const APP_VERSION = "v24";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1053,6 +1053,25 @@ function renderPreview() {
 }
 
 /** カメラ/スキャンから受け取ったファイルを取り込む */
+/* ★カメラボタン。まずアプリ内カメラを試し、だめならファイル選択に戻す。
+   <input capture> はブラウザへの「お願い」でしかなく、パソコンでは必ず無視され、
+   iPhoneでもホーム画面から開いたときはファイルアプリが出ることがあるため。 */
+async function takePhoto() {
+  const room = 6 - pendingFiles.length;
+  if (room <= 0) { toast("いちどに送れるのは6枚までです"); return; }
+  if (cameraSupported()) {
+    const files = await openCamera({ max: room });
+    if (files === null) {           // 権限拒否・カメラなし → 従来の方法へ
+      toast("カメラを使えませんでした。写真を選んでください");
+      $("#cameraIn").click();
+      return;
+    }
+    if (files.length) intakeFiles(files, "camera");
+    return;
+  }
+  $("#cameraIn").click();
+}
+
 async function intakeFiles(fileList, how) {
   const files = Array.from(fileList || []);
   if (!files.length) return;
@@ -1984,6 +2003,7 @@ function init() {
   });
 
   // 写真
+  $("#cameraBtn").onclick = takePhoto;
   $("#cameraIn").onchange = (e) => intakeFiles(e.target.files, "camera");
   $("#scanIn").onchange = (e) => intakeFiles(e.target.files, "scan");
   $("#scanHelp").onclick = showScanHelp;
