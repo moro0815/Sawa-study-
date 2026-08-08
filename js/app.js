@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v20";
+const APP_VERSION = "v21";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -2298,6 +2298,9 @@ function renderLukeDetail() {
       </label>
     </div>
 
+    <h3 class="sub">Lukeの絵を変える</h3>
+    <div id="lukeArtBox"></div>
+
     <h3 class="sub">覚えた芸 ${got}/${tricks.length}</h3>
     <p class="cs">芸が増える条件は<b>「正解した数」ではありません。</b>
       いい学び方ができたときに増えます。ごほうびではないので、ねらって取らなくて大丈夫です。</p>
@@ -2312,9 +2315,6 @@ function renderLukeDetail() {
     </div>
     ${next ? `<div class="note-box"><b>つぎに覚えられそうなのは「${esc(next.name)}」</b><br>
       ${esc(next.how)}<br><span class="cs">${esc(next.why)}</span></div>` : ""}
-
-    <h3 class="sub">Lukeの絵を変える</h3>
-    <div id="lukeArtBox"></div>
 
     <h3 class="sub">Lukeのきもち一覧</h3>
     <p class="cs">Lukeが<b>そっぽを向くのは「近道をしようとしたとき」だけ</b>です。
@@ -2655,9 +2655,11 @@ function renderLukeCrop() {
       <input type="range" id="lkCropZoom" min="100" max="320" value="${Math.round(j.zoom * 100)}">
     </label>
     <div class="lk-crop-btns">
+      <button class="btn btn-sm ghost" id="lkCropRot" title="90度まわす">↻ 回す</button>
       <button class="btn btn-sm" id="lkCropOk">これにする</button>
       <button class="btn btn-sm ghost" id="lkCropNg">やめる</button>
-    </div>`;
+    </div>
+    <p class="cs" style="text-align:center;margin-top:8px">横向きになっていたら「回す」を押してください。</p>`;
 
   const area = $("#lkCrop"), im = $("#lkCropImg");
   let drag = null;
@@ -2692,6 +2694,19 @@ function renderLukeCrop() {
     cropClamp();
     im.style.width = (j.img.naturalWidth * nw).toFixed(1) + "px";
     im.style.left = j.x.toFixed(1) + "px"; im.style.top = j.y.toFixed(1) + "px";
+  };
+
+  $("#lkCropRot").onclick = async () => {
+    const b = $("#lkCropRot"); b.disabled = true;
+    try {
+      j.img = await rotateImage(j.img, 90);
+      // 回すと縦横が入れかわるので、位置と倍率を作り直す
+      j.cover = Math.max(j.V / j.img.naturalWidth, j.V / j.img.naturalHeight);
+      j.zoom = 1;
+      j.x = (j.V - j.img.naturalWidth * j.cover) / 2;
+      j.y = (j.V - j.img.naturalHeight * j.cover) / 2;
+      renderLukeCrop();
+    } catch { toast("まわせませんでした"); b.disabled = false; }
   };
 
   $("#lkCropNg").onclick = () => { cropJob = null; renderLukeArt(); };

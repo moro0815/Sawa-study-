@@ -208,20 +208,59 @@ function lukeArtBytes() {
   return Object.values(loadLukeArt()).reduce((n, v) => n + (v?.u ? v.u.length : 0), 0);
 }
 
-/** ファイルを Image として読み込む */
-function readImage(file) {
+/** data URL から Image を作る */
+function toImage(url) {
   return new Promise((resolve, reject) => {
-    if (!/^image\//.test(file.type)) return reject(new Error("画像ファイルを選んでください"));
+    const img = new Image();
+    img.onerror = () => reject(new Error("画像として開けませんでした"));
+    img.onload = () => resolve(img);
+    img.src = url;
+  });
+}
+
+/**
+ * ファイルを Image として読み込む。
+ * スマホの写真はそのままだと大きすぎる(1200万画素など)ので、
+ * ここで長辺1000pxに縮めておく。あとの回転や切り抜きが軽くなる。
+ */
+async function readImage(file, max = 1000) {
+  if (!/^image\//.test(file.type)) throw new Error("画像ファイルを選んでください");
+  const url = await new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onerror = () => reject(new Error("読み込めませんでした"));
-    fr.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("画像として開けませんでした"));
-      img.onload = () => resolve(img);
-      img.src = fr.result;
-    };
+    fr.onload = () => resolve(fr.result);
     fr.readAsDataURL(file);
   });
+  const img = await toImage(url);
+  const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+  if (r >= 1) return img;
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.naturalWidth * r);
+  c.height = Math.round(img.naturalHeight * r);
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return toImage(c.toDataURL("image/png"));
+}
+
+/**
+ * 90度ずつ回す。
+ * iPhoneで撮った写真は、向きの情報(EXIF)の扱いが端末や経路によって
+ * まちまちで、横向きのまま出ることがある。自動判定に頼らず、
+ * その場で回せるようにしておくほうが確実。
+ */
+async function rotateImage(img, deg = 90) {
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const swap = Math.abs(deg) % 180 !== 0;
+  const c = document.createElement("canvas");
+  c.width = swap ? h : w;
+  c.height = swap ? w : h;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate((deg * Math.PI) / 180);
+  ctx.drawImage(img, -w / 2, -h / 2);
+  return toImage(c.toDataURL("image/png"));
 }
 
 /**
