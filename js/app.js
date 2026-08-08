@@ -2,9 +2,18 @@
    app.js — 画面制御とアプリ本体
    ========================================================================= */
 
+/* HTTPSでないと、オフライン起動も共有シートも動かない。
+   以前は .htaccess で転送していたが、更新のたびに上書きすると
+   サーバー側のパスワード設定が消えるため、ここで行う。 */
+if (location.protocol === "http:" && !/^(localhost|127\.|\[?::1)/.test(location.hostname)) {
+  location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+}
+
 const KEY = "sawa-navi-v2";
+const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
+const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v7";
+const APP_VERSION = "v8";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -38,6 +47,7 @@ const defaults = () => ({
   letters: [],                 // [{text, writtenAt, openAt, opened}]
   costSchool: "hokudai",
   parentPeriod: 7,
+  lastBackupAt: null,        // 端末の外へ書き出した最後の日時
   pendingConf: null,
   lastConf: null,
 });
@@ -66,13 +76,115 @@ function curProvider() { return providerOf(S.provider); }
 function curModel() { return S.model || curProvider().defaultModel; }
 function curKey() { return (S.apiKeys && S.apiKeys[S.provider]) || ""; }
 function curBaseUrl() { return S.baseUrl || curProvider().defaultBaseUrl || ""; }
+let lastAutoBackup = 0;
 function save() {
+  // 5分に1回、その日のひかえを最新の状態に更新する
+  if (Date.now() - lastAutoBackup > 5 * 60000) { lastAutoBackup = Date.now(); try { takeBackup(); } catch (_) {} }
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (_) {
     S.chat = S.chat.slice(-30); S.apiMessages = S.apiMessages.slice(-20);
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {}
   }
 }
+/* ═══════════════ バックアップ ═══════════════
+   沙和さんの記録が消えることは、このアプリで最も避けたい事故。
+   3段構えで守る。
+     1. 端末内に毎日1回、自動でひかえを取る(最大12件)
+     2. 「すべて消す」の直前にも必ずひかえを取る
+     3. iCloud等に保存できるファイルを書き出す(共有シート)
+   会話履歴は容量を食うわりに失っても困らないので、ひかえには入れない。 */
+
+function backupPayload() {
+  const { chat, apiMessages, ...rest } = S;
+  return rest;
+}
+
+function loadBackups() {
+  try { return JSON.parse(localStorage.getItem(BKEY)) || []; } catch (_) { return []; }
+}
+
+function writeBackups(list) {
+  while (list.length) {
+    try { localStorage.setItem(BKEY, JSON.stringify(list)); return true; }
+    catch (_) { list.shift(); }             // 容量が足りなければ古いものから捨てる
+  }
+  try { localStorage.removeItem(BKEY); } catch (_) {}
+  return false;
+}
+
+/**
+ * ひかえを取る。1日1件だが、その日のぶんは【最新の状態で上書きする】。
+ * 起動時の1回きりにすると、その日の勉強がまるごと失われるため。
+ * label 付き(消す前など)は日付が同じでも別に残す。
+ */
+function takeBackup(label) {
+  const list = loadBackups();
+  const d = todayISO();
+  if (!label) {
+    const i = list.findIndex((b) => b.date === d && !b.label);
+    if (i >= 0) list.splice(i, 1);          // 今日のぶんは作り直す
+  }
+  list.push({ date: d, at: Date.now(), label: label || "", data: backupPayload() });
+  while (list.length > MAX_BACKUPS) {
+    const i = list.findIndex((b) => !b.label);      // 手動のひかえは優先して残す
+    list.splice(i >= 0 ? i : 0, 1);
+  }
+  return writeBackups(list);
+}
+
+/** ひかえから戻す。会話履歴は今のものを残す */
+function restoreBackup(i) {
+  const b = loadBackups()[i];
+  if (!b) return false;
+  takeBackup("戻す前");
+  S = { ...defaults(), ...b.data, chat: S.chat, apiMessages: [] };
+  save();
+  return true;
+}
+
+/** 書き出すファイルの中身 */
+function backupFile() {
+  return JSON.stringify({
+    app: "sawa-navi", version: APP_VERSION, savedAt: new Date().toISOString(),
+    name: S.name, grade: S.grade, data: backupPayload(),
+  }, null, 2);
+}
+
+function backupFileName() { return `沙和ナビ-バックアップ-${todayISO()}.json`; }
+
+/** 共有シート(iCloud/ファイルに保存)に出す。使えなければダウンロード */
+async function shareBackup() {
+  const text = backupFile();
+  const file = new File([text], backupFileName(), { type: "application/json" });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "沙和ナビのバックアップ" });
+      S.lastBackupAt = Date.now(); save(); renderBackup();
+      return "shared";
+    } catch (e) { if (e?.name === "AbortError") return "cancel"; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.download = backupFileName(); a.click();
+  URL.revokeObjectURL(a.href);
+  S.lastBackupAt = Date.now(); save(); renderBackup();
+  return "downloaded";
+}
+
+/** 読み込み。新旧どちらの形式でも受け取る */
+function applyBackupText(txt) {
+  const j = JSON.parse(txt);
+  const data = (j && j.app === "sawa-navi" && j.data) ? j.data : j;
+  if (!data || typeof data !== "object" || !("mem" in data)) throw new Error("形式が違います");
+  takeBackup("読み込み前");
+  S = { ...defaults(), ...data, chat: [], apiMessages: [] };
+  save();
+}
+
+function daysSinceBackup() {
+  return S.lastBackupAt ? Math.floor((Date.now() - S.lastBackupAt) / 864e5) : null;
+}
+
 function mem(id) { return (S.mem[id] ||= newMemState(id)); }
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -1398,6 +1510,7 @@ function go(screen) {
 function init() {
   // 使い始めた日を記録(長く付き合うための起点)
   if (!S.startedAt) { S.startedAt = Date.now(); save(); }
+  takeBackup();                     // 1日1回、端末内にひかえを取る
   applyTheme(themeId());
 
   // 設定
@@ -1553,30 +1666,34 @@ function init() {
   };
 
   // データ
-  $("#exportData").onclick = () => {
-    const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `sawa-navi-${today()}.json`; a.click();
-    URL.revokeObjectURL(a.href);
+  $("#shareBackup").onclick = async () => {
+    const r = await shareBackup();
+    if (r === "shared") toast("バックアップを保存しました");
+    else if (r === "downloaded") toast("バックアップをダウンロードしました");
   };
   $("#importData").onchange = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
     const r = new FileReader();
     r.onload = () => {
-      try { S = { ...defaults(), ...JSON.parse(r.result) }; save(); location.reload(); }
-      catch (_) { toast("読み込めませんでした"); }
+      try {
+        applyBackupText(r.result);
+        alert("バックアップから戻しました。");
+        location.reload();
+      } catch (_) { toast("このファイルは読み込めませんでした"); }
+      e.target.value = "";
     };
     r.readAsText(f);
   };
   $("#resetChat").onclick = () => {
-    if (!confirm("会話履歴だけを消します。学習データ・成績は残ります。")) return;
+    if (!confirm("会話履歴だけを消します。学習データ・成績・宿題は残ります。")) return;
     S.chat = []; S.apiMessages = []; save(); location.reload();
   };
   $("#resetAll").onclick = () => {
-    if (!confirm("すべてのデータ(学習記録・成績・会話)を消します。取り消せません。")) return;
+    if (!confirm("すべてのデータ(学習記録・成績・宿題・会話)を消します。\n\n消す直前に自動でひかえを取るので、あとから戻せます。")) return;
+    takeBackup("すべて消す前");
     localStorage.removeItem(KEY); location.reload();
   };
+  renderBackup();
 
   // 復元
   for (const m of S.chat.slice(-40)) addMsg(m.who, m.text, { img: m.img, persona: m.persona });
@@ -1600,6 +1717,55 @@ function init() {
     go("parent");
     $("#settingsMsg").textContent = "はじめに、おうちの方が使うAIとAPIキーを設定してください";
   }
+}
+
+/* ═══════════════ バックアップの画面 ═══════════════ */
+
+function renderBackup() {
+  const d = daysSinceBackup();
+  const n = document.querySelector("#backupNotice");
+  if (n) {
+    if (d == null) {
+      n.innerHTML = `<div class="bk-notice warn"><b>まだ一度もバックアップしていません</b>
+        <p>いま作っておくと、機種変更や不意の消去のときも沙和さんの記録が残ります。1分で終わります。</p></div>`;
+    } else if (d >= 30) {
+      n.innerHTML = `<div class="bk-notice warn"><b>前回のバックアップから ${d}日 たちました</b>
+        <p>そろそろ保存しておくと安心です。</p></div>`;
+    } else {
+      n.innerHTML = `<div class="bk-notice ok"><b>${d === 0 ? "今日" : d + "日前"}にバックアップしました</b>
+        <p>この調子で月1回ほどお願いします。</p></div>`;
+    }
+  }
+
+  const box = document.querySelector("#backupList");
+  if (!box) return;
+  const list = loadBackups().slice().reverse();
+  if (!list.length) {
+    const hasData = Object.keys(S.mem || {}).length > 0;
+    box.innerHTML = hasData
+      ? `<div class="bk-notice warn"><b>端末内のひかえが作れていません</b>
+          <p>記録が多くなり、端末の保存領域に収まらなくなっている可能性があります。
+          上の<b>「バックアップを保存する」</b>でファイルに残しておいてください。</p></div>`
+      : `<p class="cs">まだひかえはありません。学習をはじめると自動で作られます。</p>`;
+    return;
+  }
+  box.innerHTML = list.map((b, i) => {
+    const idx = loadBackups().length - 1 - i;
+    const con = Object.keys(b.data.mem || {}).length;
+    const hw = (b.data.homework || []).length;
+    const gr = (b.data.grades || []).length;
+    return `<div class="bk-item">
+      <div><b>${esc(b.date)}</b>${b.label ? ` <span class="bk-tag">${esc(b.label)}</span>` : ""}
+        <span class="bk-meta">概念${con} ・ 宿題${hw} ・ テスト${gr}</span></div>
+      <button class="btn btn-sm btn-ghost" data-restore="${idx}">これに戻す</button>
+    </div>`;
+  }).join("");
+  box.querySelectorAll("[data-restore]").forEach((b) => b.onclick = () => {
+    const i = Number(b.dataset.restore);
+    const bk = loadBackups()[i];
+    if (!confirm(`${bk.date} の状態に戻します。\n\n今の状態も自動でひかえを取るので、やり直せます。`)) return;
+    if (restoreBackup(i)) { alert("戻しました。"); location.reload(); }
+  });
 }
 
 /* ═══════════════ AIプロバイダの設定画面 ═══════════════ */

@@ -484,11 +484,24 @@
   </div>
 
   <div class="card">
-    <h2 class="ct">▶ データ</h2>
-    <button class="btn btn-ghost" id="exportData">学習データを書き出す(JSON)</button>
-    <label class="btn btn-ghost file-btn">学習データを読み込む<input type="file" id="importData" accept="application/json" hidden></label>
+    <h2 class="ct">▶ バックアップ <span class="ct-note">沙和さんの記録を守るところ</span></h2>
+    <div id="backupNotice"></div>
+    <button class="btn btn-primary" id="shareBackup">バックアップを保存する</button>
+    <p class="cs">iPhoneでは共有シートが開きます。<b>「"ファイル"に保存」→ iCloud Drive</b> を選ぶと、
+      機種変更のときもそのまま戻せます。<b>月に1回</b>を目安にどうぞ。</p>
+
+    <label class="btn btn-ghost file-btn">バックアップから戻す<input type="file" id="importData" accept="application/json" hidden></label>
+
+    <h3 class="sub-h">この端末に残っているひかえ</h3>
+    <p class="cs">毎日1回、自動で取っています。あやまって消してしまったときはここから戻せます。<br>
+      <b>ただし端末の中にあるので、機種変更や「Webサイトデータを消去」では一緒に消えます。</b>
+      上のバックアップ保存もあわせてお使いください。</p>
+    <div id="backupList"></div>
+
+    <h2 class="ct" style="margin-top:20px">▶ 消す</h2>
     <button class="btn btn-danger" id="resetChat">会話履歴だけ消す</button>
     <button class="btn btn-danger" id="resetAll">すべて消す</button>
+    <p class="cs">「すべて消す」を押しても、<b>直前に自動でひかえを取ります。</b>まちがえても上の一覧から戻せます。</p>
   </div>
 </section>
 
