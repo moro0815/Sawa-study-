@@ -80,18 +80,19 @@
   <!-- ★開いた瞬間に見える1枚。ここで迷わせない。
        教科選択 → 単元選択 → 問題選択 を毎回させないための card。 -->
   <div class="card mission" id="cardMission">
-    <div class="ms-luke">
-      <div class="ms-face" id="msFace"></div>
-      <p class="ms-say" id="msSay"></p>
+    <div class="mi-luke">
+      <div class="mi-face" id="msFace"></div>
+      <p class="mi-say" id="msSay"></p>
     </div>
-    <div class="ms-body" id="msBody"></div>
+    <div class="mi-body" id="msBody"></div>
     <button class="btn btn-primary ms-go" id="msGo">Lukeと始める</button>
-    <div class="ms-alt">
-      <button class="ms-a" id="msMini">5分だけ</button>
-      <button class="ms-a" id="msPick">科目を選ぶ</button>
-      <button class="ms-a" id="msFree">自由に質問</button>
+    <div class="mi-alt">
+      <button class="mi-a" id="msMini">5分だけ</button>
+      <button class="mi-a" id="msWrite">✍️ 書く</button>
+      <button class="mi-a" id="msPick">科目を選ぶ</button>
+      <button class="mi-a" id="msFree">自由に質問</button>
     </div>
-    <button class="ms-end" id="msEnd" hidden>今日はここまでにする</button>
+    <button class="mi-end" id="msEnd" hidden>今日はここまでにする</button>
   </div>
 
   <div class="card hero">
@@ -555,6 +556,20 @@
     <div id="subjectBreakdown"></div>
   </div>
 
+  <div class="card" id="cardRaw">
+    <h2 class="ct">▶ 生データ <span class="ct-note" id="rawNote"></span></h2>
+    <p class="cs">1問ごとの<b>問題ID・答えた内容・正誤・確信度・回答時間・端末・日時</b>を、
+      <b>消さずに</b>ためています。いま画面に出ている習得度や苦手の分析は、
+      すべて<b>この生データから作り直せます</b>。<br>
+      将来もっと良い復習アルゴリズムに変えたとき、<b>6年ぶんをまるごと計算し直せる</b>ようにするためです。</p>
+    <div id="rawInfo"></div>
+    <div class="raw-btns">
+      <button class="btn btn-ghost btn-sm" id="rawRecalc">分析を作り直す(お試し)</button>
+      <button class="btn btn-ghost btn-sm" id="rawDump">生データだけ書き出す</button>
+    </div>
+    <p class="cs" id="rawMsg"></p>
+  </div>
+
   <div class="card" id="cardPatterns">
     <h2 class="ct">▶ 沙和さんの学び方(実測) <span class="ct-note" id="patNote"></span></h2>
     <p class="cs">1問ごとに<b>何時か・始めて何分か・どの手を使ったか・なぜ間違えたか</b>を残しています。
@@ -756,6 +771,43 @@
 <script src="js/luke.js"></script>
 <script src="js/speech.js"></script>
 <script src="js/camera.js"></script>
+<!-- ══════════ 書く練習(全画面。ナビは増やさない) ══════════ -->
+<div class="wp" id="writePad" hidden>
+  <div class="wp-bar">
+    <button class="wp-x" id="wpClose" aria-label="とじる">✕</button>
+    <div class="wp-seg">
+      <button class="wp-s on" data-wk="kanji">漢字</button>
+      <button class="wp-s" data-wk="spell">つづり</button>
+    </div>
+    <span class="wp-n" id="wpCount"></span>
+  </div>
+
+  <div class="wp-q" id="wpQ"></div>
+
+  <div class="wp-confrow" id="wpConfRow">
+    <span>書く前に —</span>
+    <button class="conf-btn wp-c c3" data-wc="3">◎ 書ける</button>
+    <button class="conf-btn wp-c c2" data-wc="2">○ たぶん</button>
+    <button class="conf-btn wp-c c1" data-wc="1">△ あやしい</button>
+  </div>
+
+  <div class="wp-canvas-wrap">
+    <canvas id="wpCanvas"></canvas>
+    <div class="wp-answer" id="wpAnswer" hidden></div>
+  </div>
+
+  <div class="wp-tools">
+    <button class="wp-t" id="wpUndo">↩ 1画もどす</button>
+    <button class="wp-t" id="wpClear">消す</button>
+    <button class="wp-t" id="wpAsk">🐰 見てもらう</button>
+  </div>
+
+  <div class="wp-act" id="wpAct"></div>
+  <p class="wp-note" id="wpNote"></p>
+</div>
+
+<script src="js/rawlog.js"></script>
+<script src="js/write.js"></script>
 <script src="js/today.js"></script>
 <script src="js/cause.js"></script>
 <script src="js/transfer.js"></script>

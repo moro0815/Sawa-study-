@@ -447,6 +447,8 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .ms { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .ms:last-child { border: none; }
 .ms.crit { background: #fffaf0; margin: 0 -8px; padding: 9px 8px; border-radius: 8px; }
+/* ★min-width:0 が無いため、長い説明文でカードから横にはみ出していた */
+.ms-body { min-width: 0; }
 .ms-at { flex-shrink: 0; width: 62px; font-size: 11px; font-weight: 700; color: var(--ink3); padding-top: 2px; }
 .ms.crit .ms-at { color: var(--amber); }
 .ms-label { font-size: 13px; font-weight: 600; }
@@ -784,7 +786,12 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   .chat { flex: 1; min-height: 0; max-height: none; }
   .msg { max-width: 74%; }
   .composer { padding: 9px 12px; }
-  #input { font-size: 15px !important; }
+  /* ★ここを 15px にしていたため、iPad Safari で入力欄を触ると
+     画面が勝手に拡大していた(iOSは16px未満の入力欄でズームする)。
+     マウスのある端末に限って小さくする。 */
+  @media (hover: hover) and (pointer: fine) {
+    #input { font-size: 15px !important; }
+  }
 
   /* ── そのほか ── */
   .toast { bottom: 26px; left: auto; right: 26px; transform: none; }
@@ -1041,6 +1048,8 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .luke-say { font-size: 13.5px; color: var(--ink); line-height: 1.7; margin: 6px 0 10px;
   min-height: 2.6em; animation: lkSay .3s ease; }
 @keyframes lkSay { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+/* ★iPhone SE(320px)や iPhone 8(375px)では、Lukeの絵と3つのボタンが
+   横に並びきらず、カードごとはみ出していた。狭いときは縦に積む。 */
 .luke-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 .luke-btns .btn { max-width: none; flex: 1 1 0; min-width: 0; padding: 8px 4px; font-size: 11.5px; white-space: nowrap; }
 
@@ -1304,23 +1313,23 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 
 /* ── 今日のミッション(開いた瞬間の1枚) ─────────────── */
 .mission { border: 1px solid var(--accent-soft); }
-.ms-luke { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; }
-.ms-face { flex: 0 0 auto; }
-.ms-say { font-size: 14px; font-weight: 600; line-height: 1.6; }
-.ms-min { font-size: 11.5px; color: var(--ink2); margin-bottom: 6px; }
-.ms-min b { color: var(--green); }
-.ms-list { list-style: none; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.ms-list li { font-size: 13px; padding: 7px 11px; background: var(--bg); border-radius: 9px; }
-.ms-list li b { color: var(--red); }
-.ms-done { font-size: 13px; font-weight: 600; color: var(--green); background: #e8f6f0;
+.mi-luke { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; }
+.mi-face { flex: 0 0 auto; }
+.mi-say { font-size: 14px; font-weight: 600; line-height: 1.6; }
+.mi-min { font-size: 11.5px; color: var(--ink2); margin-bottom: 6px; }
+.mi-min b { color: var(--green); }
+.mi-list { list-style: none; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.mi-list li { font-size: 13px; padding: 7px 11px; background: var(--bg); border-radius: 9px; }
+.mi-list li b { color: var(--red); }
+.mi-done { font-size: 13px; font-weight: 600; color: var(--green); background: #e8f6f0;
   border-radius: 10px; padding: 11px 13px; margin-bottom: 12px; }
-.ms-done span { font-size: 11.5px; font-weight: 400; color: var(--ink2); }
-.ms-go { width: 100%; }
-.ms-alt { display: flex; gap: 6px; margin-top: 9px; }
-.ms-a { flex: 1; background: transparent; border: 1px solid var(--line); border-radius: 999px;
+.mi-done span { font-size: 11.5px; font-weight: 400; color: var(--ink2); }
+.mi-go { width: 100%; }
+.mi-alt { display: flex; gap: 6px; margin-top: 9px; }
+.mi-a { flex: 1; background: transparent; border: 1px solid var(--line); border-radius: 999px;
   padding: 7px 4px; font-size: 11.5px; color: var(--ink2); font-family: inherit; cursor: pointer; }
-.ms-a.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
-.ms-end { display: block; width: 100%; margin-top: 10px; background: transparent; border: 0;
+.mi-a.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.mi-end { display: block; width: 100%; margin-top: 10px; background: transparent; border: 0;
   font-size: 11.5px; color: var(--ink3); font-family: inherit; cursor: pointer; text-decoration: underline; }
 
 /* ── 終わり方 ─────────────────────────────────────── */
@@ -1333,3 +1342,102 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .wrap-list li::before { content: "✓ "; color: var(--green); font-weight: 700; }
 .wrap-luke { font-size: 13.5px; font-weight: 700; margin: 12px 0 4px; }
 .wrap-meta { font-size: 11px; color: var(--ink3); margin-bottom: 12px; }
+
+/* ── iPhone / iPad で確実に使えるようにする ───────────────
+   ★実機の幅で測って見つけた不具合を、まとめてここで直す。 */
+
+/* 指で押す端末では、押すところを小さくしない(Appleの目安は44pt) */
+@media (pointer: coarse) {
+  .mi-a, .timer-btn, .btn-sm, .qa, .seg-btn, .conf-btn, .lk-b,
+  .luke-btns .btn, .dm-b, .ng-sel, .intake-btn, .sp {
+    min-height: 42px;
+  }
+  .cam-b, .cam-x { min-height: 44px; min-width: 44px; }
+  /* 入力欄が16px未満だと、触った瞬間に画面が勝手に拡大する */
+  input, select, textarea { font-size: 16px; }
+}
+
+/* 狭いiPhone(SE・8・mini)。Lukeカードを縦に積む */
+@media (max-width: 380px) {
+  .luke-main { flex-direction: column; align-items: stretch; gap: 8px; }
+  .luke-stage { align-self: center; }
+  .luke-btns .btn { flex: 1 1 30%; font-size: 11px; padding: 10px 2px; }
+  .mi-a { font-size: 11px; padding: 10px 2px; }
+  .mi-list li { font-size: 12.5px; }
+  .tb-stat { min-width: 0; }
+}
+
+/* 横向き(ランドスケープ)で、チャットがつぶれないように */
+@media (orientation: landscape) and (max-height: 460px) {
+  .chat { max-height: 46vh; }
+  .intake { display: none; }
+  .conf-btns { gap: 4px; }
+}
+
+/* ── 書く練習(漢字・つづり)───────────────────────────
+   iPhone でも iPad でも同じ画面。全画面にして、書くところを最大に取る。 */
+.wp { position: fixed; inset: 0; z-index: 280; background: var(--bg);
+  display: flex; flex-direction: column;
+  padding: calc(8px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom)); }
+.wp[hidden] { display: none; }
+.wp-bar { display: flex; align-items: center; gap: 10px; }
+.wp-x { width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--card);
+  box-shadow: var(--sh); font-size: 15px; cursor: pointer; flex: 0 0 auto; }
+.wp-seg { display: flex; gap: 4px; background: var(--card); border-radius: 999px; padding: 3px;
+  box-shadow: var(--sh); }
+.wp-s { border: 0; background: transparent; border-radius: 999px; padding: 7px 15px;
+  font-size: 12.5px; font-weight: 600; color: var(--ink2); font-family: inherit; cursor: pointer; }
+.wp-s.on { background: var(--accent); color: #fff; }
+.wp-n { margin-left: auto; font-size: 12px; color: var(--ink3); font-weight: 700; }
+
+.wp-q { text-align: center; padding: 12px 0 8px; }
+.wp-read { font-size: 26px; font-weight: 800; letter-spacing: .04em; }
+.wp-ex { font-size: 15px; color: var(--ink2); margin-top: 4px; }
+.wp-hint { font-size: 11.5px; color: var(--ink3); margin-top: 5px;
+  display: flex; align-items: center; justify-content: center; gap: 8px; }
+.wp-say { background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 12px; font-size: 11.5px; font-family: inherit; cursor: pointer; min-height: 34px; }
+.wp-empty { font-size: 14px; line-height: 1.9; color: var(--ink2); padding: 24px 8px; }
+.wp-empty span { font-size: 12px; color: var(--ink3); }
+
+.wp-confrow { display: flex; align-items: center; justify-content: center; gap: 5px;
+  flex-wrap: wrap; font-size: 11.5px; color: var(--ink2); margin-bottom: 8px; }
+.wp-confrow .conf-btn { flex: 0 1 auto; padding: 8px 12px; font-size: 12px; }
+.wp-confrow .conf-btn.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.wp-canvas-wrap { position: relative; flex: 1; min-height: 0;
+  display: flex; align-items: center; justify-content: center; }
+#wpCanvas { width: min(100%, 62vh); aspect-ratio: 1 / 1; max-height: 100%;
+  background: var(--card); border-radius: 14px; box-shadow: var(--sh);
+  touch-action: none; cursor: crosshair; }
+.wp-answer { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,.94);
+  border: 1px solid var(--line); border-radius: 12px; padding: 6px 10px; text-align: center; }
+.wp-a { display: block; font-size: 42px; font-weight: 800; line-height: 1.1;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; }
+.wp-al { font-size: 10px; color: var(--ink3); }
+
+.wp-tools { display: flex; gap: 6px; margin: 9px 0; }
+.wp-t { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 4px; font-size: 12px; font-family: inherit; cursor: pointer; min-height: 42px; }
+.wp-t:disabled { opacity: .4; }
+.wp-act { display: flex; gap: 8px; }
+.wp-act .btn { flex: 1; max-width: none; }
+.wp-ok { background: var(--green); color: #fff; }
+.wp-ng { background: var(--card); border: 1px solid var(--line); color: var(--ink); }
+.wp-note { font-size: 11.5px; color: var(--ink3); text-align: center; margin-top: 7px; min-height: 16px; }
+
+@media (min-width: 900px) {
+  .wp { padding-left: 8vw; padding-right: 8vw; }
+  #wpCanvas { width: min(100%, 54vh); }
+}
+
+/* ── 生データ ─────────────────────────────────────── */
+.raw-btns { display: flex; gap: 6px; margin-top: 10px; }
+.raw-btns .btn { flex: 1; max-width: none; }
+.raw-layers { margin-top: 12px; }
+.rl { background: var(--bg); border-radius: 10px; padding: 9px 11px; display: flex;
+  flex-direction: column; gap: 2px; }
+.rl b { font-size: 12.5px; }
+.rl span { font-size: 11px; color: var(--ink2); line-height: 1.6; }
+.rl i { font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--green); }
+.rl-arrow { text-align: center; font-size: 10.5px; color: var(--ink3); padding: 3px 0; }

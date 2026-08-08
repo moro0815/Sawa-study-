@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v27";
+const APP_VERSION = "v28";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -42,6 +42,7 @@ const defaults = () => ({
   apiLog: [],            // 直近のAPI呼び出し記録
   eng: {},               // 英語 {pron, words, conv, log} — 発音の記録・単語の記憶状態・会話回数
   luke: {},              // 相棒 Luke {bornAt, metAt, tricks, memories, mood, pats, taught}
+  write: {},             // 書く練習(漢字・つづり)。write.js
   ansLog: [],            // 1問ごとの記録(原因・転移レベル・時刻・使った手)。cause.js
   ansAgg: null,          // 古いログを落としても残す集計
   tr: {},                // 概念ID -> 転移レベルの状態。transfer.js
@@ -151,12 +152,17 @@ function save() {
  *   端末内のひかえには入れない — 12世代ぶん持つと容量を食いつぶすため。
  *   ファイル書き出しとサーバー預けには入れる(機種変更で絵が消えないように)。
  */
+/* ★withArt が立つのは「ファイル書き出し」と「サーバーのひかえ」のとき。
+   生データもそのときだけ入れる。端末内の12世代のひかえに毎回入れると
+   localStorage を食いつぶすため。 */
 function backupPayload(secrets = true, withArt = false) {
   const { chat, apiMessages, ...rest } = S;
-  const art = withArt && lukeArtCount() ? { lukeArt: loadLukeArt() } : {};
-  if (secrets) return { ...rest, ...art };
+  const extra = withArt
+    ? { ...(lukeArtCount() ? { lukeArt: loadLukeArt() } : {}), rawEvents: rawExport() }
+    : {};
+  if (secrets) return { ...rest, ...extra };
   const { apiKeys, srvToken, ...safe } = rest;
-  return { ...safe, ...art };
+  return { ...safe, ...extra };
 }
 
 function loadBackups() {
@@ -238,8 +244,13 @@ function applyBackupText(txt) {
   if (!data || typeof data !== "object" || !("mem" in data)) throw new Error("形式が違います");
   takeBackup("読み込み前");
   const keys = S.apiKeys, tok = S.srvToken;      // 認証情報は今のものを引き継ぐ
-  const { lukeArt, ...rest } = data;             // 絵は別の場所にしまう
+  const { lukeArt, rawEvents, ...rest } = data;  // 絵と生データは別の場所にしまう
   if (lukeArt && Object.keys(lukeArt).length) saveLukeArt(lukeArt);
+  if (Array.isArray(rawEvents) && rawEvents.length) {
+    // ★生データは「置きかえ」ではなく「足しこみ」。
+    //   別の端末のひかえを読んでも、こちらの記録が消えないようにする
+    rawImport(rawEvents).then((n) => { if (n) toast(`生データを ${n}件 取り込みました`); renderRawInfo(); });
+  }
   S = { ...defaults(), ...rest, chat: [], apiMessages: [] };
   if (!Object.keys(S.apiKeys || {}).length) S.apiKeys = keys;
   if (!S.srvToken) S.srvToken = tok;
@@ -384,6 +395,14 @@ function fmtTime(ms) {
   const t = Math.floor(ms / 1000);
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 }
+/* ★回答時間。AIの問いかけが画面に出てから、沙和さんが送るまでの時間。
+   速すぎる = 勘、遅すぎる = 詰まっている、の判断材料になる。
+   分からないときは null。推測で埋めない。 */
+let lastAskAt = 0, lastAnswerMs = null;
+function markAsked() { lastAskAt = Date.now(); }
+function markAnswered() { lastAnswerMs = lastAskAt ? Date.now() - lastAskAt : null; lastAskAt = 0; }
+function answerMs() { return lastAnswerMs; }
+
 /** いま何分続けているか。計測していなければ null(推測で埋めない) */
 function timerMinutes() {
   if (!timer.on) return null;
@@ -434,6 +453,14 @@ async function runTool(name, input) {
         conceptId: c.id, subject: SUBJECTS[c.s]?.name || "", correct: !!input.correct,
         confidence: input.confidence, cause, level: lvl, tactic: input.tactic,
         minsIn: timerMinutes(),
+      });
+      /* ★生データ(消さない層)。分析データはここから作り直せる */
+      rawPush({
+        kind: "answer", qid: input.question_id || "", concept: c.id,
+        subject: SUBJECTS[c.s]?.name || "", answer: input.answer_text || "",
+        expect: "", correct: !!input.correct, conf: input.confidence,
+        ms: answerMs(), grade: input.grade, cause, level: lvl,
+        tactic: input.tactic || "", minsIn: timerMinutes(),
       });
       const tr = noteTransfer(S, c.id, lvl, !!input.correct);
 
@@ -817,6 +844,15 @@ async function runTool(name, input) {
                instruction: "直すのは2〜3点までにしてください。多く言うほど、次に話す量が減ります。" };
     }
 
+    case "add_write_item": {
+      const it = addWriteItem(S, input);
+      if (!it) return { error: "answer is required" };
+      save(); 
+      const st = writeStats(S);
+      return { added: it.a, kind: it.kind, total_kanji: st.kanji.total, total_spell: st.spell.total,
+               note: "ホームの「✍️ 書く」から練習に出ます。忘れかけたころに自動で出てきます。" };
+    }
+
     /* ── 転移レベルによる習得判定 ────────────────────
        「同じ形が3問解けた」を習得と呼ばないためのしくみ。 */
     case "get_mastery_plan": {
@@ -953,6 +989,7 @@ async function send(override) {
   if (!curKey()) { addMsg("err", "APIキーが未設定です。「保護者」タブで設定してください。"); go("parent"); return; }
 
   busy = true;
+  markAnswered();          // ★AIの問いかけから、ここまでの時間を回答時間として拾う
   inflight = new AbortController();
   setSendMode(true);
 
@@ -1010,6 +1047,7 @@ async function send(override) {
         lukeStatus: lukeStatusText(S),
         karteBlock: kartePromptBlock(S),
         todayBlock: todayPromptBlock(S),
+        writeBlock: writePromptBlock(S),
         transferBlock: transferPromptBlock(S),
         causeBlock: causePromptBlock(S),
       }, statusSummary()),
@@ -1046,6 +1084,7 @@ async function send(override) {
 
     // AIが問題を出したら確信度パネルを開く
     if (/自信|確信|どのくらい/.test(res.text) && /[?？]/.test(res.text)) $("#confPanel").hidden = false;
+    if (/[?？]/.test(res.text)) markAsked();   // ★問いかけが出た時刻 = 回答時間の起点
     save(); renderAll();
   } catch (e) {
     thinking.parentElement?.remove();
@@ -1265,6 +1304,137 @@ function renderTop() {
   $("#tbSub").textContent = `${S.name}さん・${S.grade}`;
 }
 
+/* ═══════════ 書く練習(漢字・つづり)═══════════
+   ★iPhone でも iPad でも同じ画面。Apple Pencil でも指でも書ける。
+     ナビのタブは増やさない(iPhone では8個でもう限界)ので、
+     カメラと同じく全画面のオーバーレイにしてある。 */
+
+let wpKind = "kanji", wpList = [], wpIdx = 0, wpItem = null,
+    wpConf = null, wpShown = false, wpStart = 0;
+
+function openWritePad(kind) {
+  wpKind = kind || "kanji";
+  $("#writePad").hidden = false;
+  document.body.style.overflow = "hidden";
+  $$("[data-wk]").forEach((b) => b.classList.toggle("on", b.dataset.wk === wpKind));
+  loadWriteList();
+}
+
+function closeWritePad() {
+  $("#writePad").hidden = true;
+  document.body.style.overflow = "";
+  save(); renderAll();
+}
+
+function loadWriteList() {
+  wpList = writeQueue(S, wpKind, 10);
+  wpIdx = 0;
+  if (!wpList.length) {
+    $("#wpQ").innerHTML = wpKind === "kanji"
+      ? `<div class="wp-empty">今日ぶんの漢字はもうありません。<br>また忘れかけたころに出てきます。</div>`
+      : `<div class="wp-empty">つづりの練習に出せる単語がまだありません。<br>
+          英語タブで単語が登録されると、ここに出てきます。<br>
+          AI先生に「単語を登録して」と頼んでも増えます。</div>`;
+    $("#wpConfRow").hidden = true;
+    $("#wpAct").innerHTML = "";
+    $("#wpCount").textContent = "";
+    $("#wpNote").textContent = "";
+    return;
+  }
+  showWriteItem();
+}
+
+function showWriteItem() {
+  wpItem = wpList[wpIdx];
+  wpConf = null; wpShown = false;
+  $("#wpCount").textContent = `${wpIdx + 1} / ${wpList.length}`;
+  $("#wpConfRow").hidden = false;
+  $$("[data-wc]").forEach((b) => b.classList.remove("on"));
+  $("#wpAnswer").hidden = true;
+
+  $("#wpQ").innerHTML = wpItem.kind === "kanji"
+    ? `<div class="wp-read">${esc(wpItem.r)}</div>
+       <div class="wp-ex">${esc((wpItem.ex || "").replace("◯", "◯"))}</div>
+       <div class="wp-hint">◯ のところに入る漢字を書いてください</div>`
+    : `<div class="wp-read">${esc(wpItem.r || "この意味の単語")}</div>
+       <div class="wp-ex">${esc(wpItem.ex || "")}</div>
+       <div class="wp-hint">つづりを書いてください<button class="wp-say" id="wpSay">🔊 聞く</button></div>`;
+
+  if (wpItem.kind === "spell") {
+    const b = $("#wpSay");
+    if (b) b.onclick = () => speakSafe(wpItem.a, { rate: 0.85 });
+    setTimeout(() => speakSafe(wpItem.a, { rate: 0.85 }), 250);
+  }
+
+  const cv = $("#wpCanvas");
+  requestAnimationFrame(() => padInit(cv));
+  wpStart = Date.now();
+  renderPadBtns();
+  $("#wpNote").textContent = wpItem.w || "";
+  $("#wpAct").innerHTML = `<button class="btn btn-primary" id="wpShow">答えを見る</button>`;
+  $("#wpShow").onclick = revealWrite;
+}
+
+function renderPadBtns() {
+  const empty = typeof padEmpty === "function" ? padEmpty() : true;
+  const u = $("#wpUndo"), c = $("#wpClear"), a = $("#wpAsk");
+  if (u) u.disabled = empty;
+  if (c) c.disabled = empty;
+  if (a) a.disabled = empty;
+}
+
+/* ★答えを出してから自己採点。無料・すぐ・通信なし。
+   漢字練習は本来この形で、このアプリの「先に確信度」とも合う。 */
+function revealWrite() {
+  if (wpConf == null) { toast("先に「書けるかどうか」を押してください"); return; }
+  wpShown = true;
+  const el = $("#wpAnswer");
+  el.hidden = false;
+  el.innerHTML = `<span class="wp-a">${esc(wpItem.a)}</span>
+    <span class="wp-al">こう書きます</span>`;
+  $("#wpAct").innerHTML = `
+    <button class="btn wp-ng" id="wpNg">ちがった</button>
+    <button class="btn wp-ok" id="wpOk">合ってた</button>`;
+  $("#wpOk").onclick = () => judgeWrite(true, "self");
+  $("#wpNg").onclick = () => judgeWrite(false, "self");
+}
+
+function judgeWrite(ok, how) {
+  const ms = Date.now() - wpStart;
+  const r = recordWrite(S, wpItem.id, ok, wpConf, ms, how);
+  if (r?.flagged) toast("🚨 自信あり × 書けなかった — ここが一番のびます");
+  lukeReact(S, r?.quadrant === "hi-wrong" ? "hiwrong" : ok ? "correct" : "wrong");
+  save();
+  wpIdx++;
+  if (wpIdx >= wpList.length) {
+    $("#wpQ").innerHTML = `<div class="wp-empty">✓ 今日ぶん、おしまい!<br>
+      <span>${wpList.length}文字やりました。また忘れかけたころに出てきます。</span></div>`;
+    $("#wpConfRow").hidden = true;
+    $("#wpAnswer").hidden = true;
+    $("#wpAct").innerHTML = `<button class="btn btn-primary" id="wpDone">とじる</button>`;
+    $("#wpDone").onclick = closeWritePad;
+    $("#wpCount").textContent = "";
+    $("#wpNote").textContent = "";
+    return;
+  }
+  showWriteItem();
+}
+
+/** 迷ったものだけ、AI先生に見てもらう(1文字ごとに通信するため) */
+function askWriteAI() {
+  if (padEmpty()) { toast("先に書いてください"); return; }
+  if (pendingFiles.length >= 6) { toast("いちどに送れるのは6枚までです"); return; }
+  const url = padImage($("#wpCanvas"));
+  pendingFiles.push({ kind: "image", name: "write.jpg", data: url.split(",")[1],
+                      mediaType: "image/jpeg", previewUrl: url });
+  renderPreview();
+  closeWritePad();
+  S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study");
+  send(wpItem.kind === "kanji"
+    ? `「${wpItem.r}」の漢字を書きました。正しくは「${wpItem.a}」です。形を見てください。書き順は写真からは分からないので言わないでください。`
+    : `「${wpItem.a}」のつづりを書きました。合っているか見てください。`);
+}
+
 /* ── 今日のミッション ────────────────────────────────────
    ★ここが「3秒で始められる」の本体。
      選ばせるのをやめて、こちらで決める。決めるのがいちばん重い作業で、
@@ -1288,10 +1458,10 @@ function renderMission() {
   if (p.counts.new) bits.push(`<li>新しいこと × ${p.counts.new}</li>`);
 
   $("#msBody").innerHTML = done
-    ? `<div class="ms-done">✓ 今日のぶんは終わっています<br>
+    ? `<div class="mi-done">✓ 今日のぶんは終わっています<br>
         <span>${(S.sessions || []).find((x) => x.date === todayISO())?.answered || 0}問こたえました。もうやらなくて大丈夫です。</span></div>`
-    : `<div class="ms-min">${p.comeback ? `<b>${p.daysAway}日ぶり。軽くしておきました</b> ・ ` : ""}約 ${p.minutes} 分で終わります</div>
-       <ul class="ms-list">${bits.join("") || "<li>まずは1問だけ</li>"}</ul>`;
+    : `<div class="mi-min">${p.comeback ? `<b>${p.daysAway}日ぶり。軽くしておきました</b> ・ ` : ""}約 ${p.minutes} 分で終わります</div>
+       <ul class="mi-list">${bits.join("") || "<li>まずは1問だけ</li>"}</ul>`;
 
   $("#msGo").textContent = done ? "それでも もう少しやる" : p.mode === "mini" ? "5分だけ始める" : "Lukeと始める";
   $("#msGo").className = "btn ms-go " + (done ? "btn-ghost" : "btn-primary");
@@ -2198,9 +2368,39 @@ function renderPatterns() {
     : "";
 }
 
+/* ── 生データ ────────────────────────────────────────
+   ★3層に分けている理由を、画面でも見えるようにしておく。
+     「作り直せます」は、実際に作り直すボタンが無いと信用できない。 */
+function renderRawInfo() {
+  const box = $("#rawInfo");
+  if (!box) return;
+  const n = rawCount(), span = rawSpan(), dev = rawByDevice();
+  const med = rawMedianSeconds();
+  $("#rawNote").textContent = n ? `${n.toLocaleString()}件` : "";
+  box.innerHTML = !n
+    ? `<div class="karte-empty">まだ記録がありません。学習すると1問ずつたまっていきます。</div>`
+    : `<div class="row-kv"><span>ためた期間</span><b>${esc(span.from)} 〜 ${esc(span.to)}</b></div>
+       <div class="row-kv"><span>件数</span><b>${n.toLocaleString()} 件</b></div>
+       ${med ? `<div class="row-kv"><span>答えるまでの時間(中央値)</span><b>${med} 秒</b></div>` : ""}
+       ${Object.entries(dev).map(([d, v]) =>
+         `<div class="row-kv"><span>${esc(DEVICE_LABEL[d.split("+")[0]] || d)}${d.includes("+app") ? "(ホーム画面から)" : ""}</span>
+            <b>${v.n}問 ・ ${Math.round((v.ok / v.n) * 100)}%</b></div>`).join("")}
+       <div class="raw-layers">
+         <div class="rl"><b>生データ</b><span>問題ID / 答えた内容 / 正誤 / 確信度 / 回答時間 / 端末 / 日時</span><i>消さない</i></div>
+         <div class="rl-arrow">↓ いつでも作り直せる</div>
+         <div class="rl"><b>分析データ</b><span>誤答原因 / 概念 / 前提概念 / 転移レベル / 定着度</span><i>作り直せる</i></div>
+         <div class="rl-arrow">↓</div>
+         <div class="rl"><b>長期記憶</b><span>苦手パターン / 効く学習法 / 指導方針 / 次回の復習</span><i>積み上がる</i></div>
+       </div>`;
+}
+
+const DEVICE_LABEL = { iphone: "iPhone", ipad: "iPad", mac: "Mac", pc: "パソコン",
+                       android: "Android", androidtab: "Androidタブレット" };
+
 function renderParent() {
   renderKarte();
   renderPatterns();
+  renderRawInfo();
 
   /* 今週の一言 */
   const adv = guardianAdvice(S);
@@ -2308,6 +2508,14 @@ function go(screen) {
 function init() {
   // 使い始めた日を記録(長く付き合うための起点)
   if (!S.startedAt) { S.startedAt = Date.now(); save(); }
+
+  /* ★生データを読み込む。IndexedDB なので非同期。
+     読み終わるまでに答えたぶんは、待ち行列に入れてあとから書き出す。 */
+  rawInit().then((r) => {
+    console.info(`生データ: ${r.count}件 (${r.store})`);
+    renderRawInfo();
+  });
+
   takeBackup();                     // 1日1回、端末内にひかえを取る
   applyTheme(themeId());
 
@@ -2339,7 +2547,42 @@ function init() {
   // ★今日のミッション
   $("#msGo").onclick = () => startToday(planMode);
   $("#msMini").onclick = () => { planMode = planMode === "mini" ? null : "mini"; renderMission(); };
+  $("#msWrite").onclick = () => openWritePad("kanji");
+
+  // 生データ
+  $("#rawRecalc").onclick = () => {
+    const dry = rebuildFromRaw(S, { dryRun: true });
+    if (!dry.rebuilt) { $("#rawMsg").textContent = dry.note || "生データがありません"; return; }
+    if (!confirm(`生データ ${dry.rebuilt}件 から、${dry.concepts}個の概念の分析を作り直します。\n`
+      + `いまの習得度・転移レベルは、計算し直した値に置きかわります。\n`
+      + `(生データは消えません。何度でもやり直せます)`)) return;
+    const r = rebuildFromRaw(S);
+    save(); renderAll();
+    $("#rawMsg").textContent = `✓ ${r.rebuilt}件から ${r.concepts}個の概念を計算し直しました。`;
+  };
+  $("#rawDump").onclick = () => {
+    const blob = new Blob([JSON.stringify({ app: "sawa-navi", kind: "raw", version: APP_VERSION,
+      savedAt: new Date().toISOString(), events: rawExport() }, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `沙和ナビ_生データ_${todayISO()}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
   $("#msPick").onclick = () => { go("weak"); $("#cardSubjectPick")?.scrollIntoView({ behavior: "smooth" }); };
+
+  // 書く練習
+  $("#wpClose").onclick = closeWritePad;
+  $("#wpUndo").onclick = () => padUndo($("#wpCanvas"));
+  $("#wpClear").onclick = () => padClear($("#wpCanvas"));
+  $("#wpAsk").onclick = askWriteAI;
+  $$("[data-wk]").forEach((b) => b.onclick = () => openWritePad(b.dataset.wk));
+  $$("[data-wc]").forEach((b) => b.onclick = () => {
+    wpConf = Number(b.dataset.wc);
+    $$("[data-wc]").forEach((x) => x.classList.toggle("on", x === b));
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#writePad").hidden) closeWritePad();
+  });
   $("#msFree").onclick = () => { go("study"); $("#input").focus(); };
   $("#msEnd").onclick = showWrapUp;
 
@@ -2354,7 +2597,10 @@ function init() {
   $("#input").addEventListener("input", (e) => {
     e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 110) + "px";
   });
-  $$(".conf-btn").forEach((b) => b.onclick = () => {
+  /* ★ #confPanel の中だけに限定する。クラス名だけで拾っていたため、
+     書く練習の確信度ボタン(同じ見た目にしてある)まで巻き込み、
+     そちらのハンドラを上書きして壊していた。 */
+  $$("#confPanel .conf-btn").forEach((b) => b.onclick = () => {
     S.lastConf = Number(b.dataset.conf);
     $("#confPanel").hidden = true;
     toast(`確信度「${CONFIDENCE[S.lastConf].label}」を記録。答えをどうぞ`);

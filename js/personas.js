@@ -571,6 +571,23 @@ const TOOLS = [
   /* ── 転移レベルによる習得判定 ──────────────────────────
      ★「同じ形が3問解けた」を習得と呼ばないためのしくみ。 */
   {
+    name: "add_write_item",
+    description:
+      "会話に出てきた漢字や英単語を、書く練習に登録する。**読めるだけで書けない**ものを拾うための道具。" +
+      "写真の宿題や英文に出てきた語で、書けるか怪しいものがあれば登録する。例文なしでは登録しない。",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["kanji", "spell"], description: "kanji=漢字1文字 spell=英単語のつづり" },
+        answer: { type: "string", description: "書けるようにしたいもの。漢字なら1文字、英語なら1語" },
+        reading: { type: "string", description: "漢字なら読み、英語なら意味" },
+        example: { type: "string", description: "例文。漢字は該当箇所を ◯ にする(例: 動物を保◯する)" },
+        note: { type: "string", description: "間違えやすい点(例: 復と混同しやすい)" },
+      },
+      required: ["kind", "answer", "reading"],
+    },
+  },
+  {
     name: "get_mastery_plan",
     description:
       "ある概念について、次にどの段階の問題を出すべきかを返す。出題する前に必ずこれを見る。" +
@@ -659,6 +676,7 @@ ${profile.learningBlock || ""}
 ${profile.lukeBlock || ""}
 ${profile.englishBlock || ""}
 ${profile.todayBlock || ""}
+${profile.writeBlock || ""}
 ${profile.karteBlock || ""}
 ${profile.transferBlock || ""}
 ${profile.causeBlock || ""}
