@@ -8,7 +8,11 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
 const defaults = () => ({
-  apiKey: "", name: "沙和", grade: "中1",
+  provider: "anthropic",       // どのAIを使うか
+  model: "",                   // 空ならプロバイダの既定モデル
+  apiKeys: {},                 // provider -> APIキー(切り替えても消えない)
+  baseUrl: "",                 // OpenAI互換のときだけ使う
+  name: "沙和", grade: "中1",
   persona: "sensei",
   mem: {},               // conceptId -> memState
   chat: [],              // 表示用ログ [{who, text, persona, img}]
@@ -43,10 +47,22 @@ let mapFilter = "math";
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...defaults(), ...JSON.parse(raw) };
+    if (raw) {
+      const s = { ...defaults(), ...JSON.parse(raw) };
+      // 旧バージョン(Claude固定・apiKey単体)からの引き継ぎ
+      if (s.apiKey && !s.apiKeys.anthropic) s.apiKeys.anthropic = s.apiKey;
+      delete s.apiKey;
+      return s;
+    }
   } catch (_) {}
   return defaults();
 }
+
+/* ── 現在のAI設定 ── */
+function curProvider() { return providerOf(S.provider); }
+function curModel() { return S.model || curProvider().defaultModel; }
+function curKey() { return (S.apiKeys && S.apiKeys[S.provider]) || ""; }
+function curBaseUrl() { return S.baseUrl || curProvider().defaultBaseUrl || ""; }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (_) {
@@ -333,7 +349,7 @@ async function send(override) {
   const inp = $("#input");
   const text = (override ?? inp.value).trim();
   if (!text && !pendingImage) return;
-  if (!S.apiKey) { addMsg("err", "APIキーが未設定です。「保護者」タブで設定してください。"); go("parent"); return; }
+  if (!curKey()) { addMsg("err", "APIキーが未設定です。「保護者」タブで設定してください。"); go("parent"); return; }
 
   busy = true; $("#send").disabled = true;
 
@@ -373,7 +389,7 @@ async function send(override) {
 
   try {
     const res = await chatWithTools({
-      apiKey: S.apiKey,
+      provider: S.provider, model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
       system: buildSystemPrompt(S.persona, {
         name: S.name, grade: S.grade, career: curCareer(),
         pastDreams: (S.dreamHistory || []).map((d) => CAREER_MAP[d.career]?.name).filter(Boolean),
@@ -1218,7 +1234,17 @@ function init() {
   applyTheme(themeId());
 
   // 設定
-  $("#apiKey").value = S.apiKey;
+  $("#provider").innerHTML = PROVIDER_IDS
+    .map((id) => `<option value="${id}" ${S.provider === id ? "selected" : ""}>${esc(PROVIDERS[id].label)}</option>`).join("");
+  $("#provider").onchange = () => {
+    S.provider = $("#provider").value;
+    S.model = "";           // プロバイダが変わればモデルも既定に戻す
+    S.baseUrl = "";
+    save(); renderProviderUI();
+  };
+  $("#fetchModels").onclick = fetchModelList;
+  renderProviderUI();
+
   $("#pName").value = S.name;
   $("#pGrade").innerHTML = GRADES.map((g) => `<option ${S.grade === g ? "selected" : ""}>${g}</option>`).join("");
 
@@ -1320,13 +1346,15 @@ function init() {
 
   // 設定保存
   $("#saveSettings").onclick = () => {
-    S.apiKey = $("#apiKey").value.trim();
+    S.apiKeys[S.provider] = $("#apiKey").value.trim();
+    S.model = $("#model").value.trim();
+    if (curProvider().needsBaseUrl) S.baseUrl = $("#baseUrl").value.trim();
     S.name = $("#pName").value.trim() || "沙和";
     const prevGrade = S.grade;
     S.grade = $("#pGrade").value;
     // 学年が変わったら、その学年のテーマを提案(押しつけない)
     if (prevGrade !== S.grade && !S.theme) applyTheme(themeId());
-    save(); renderAll();
+    save(); renderProviderUI(); renderAll();
     $("#settingsMsg").textContent = "保存しました";
     setTimeout(() => ($("#settingsMsg").textContent = ""), 2500);
   };
@@ -1375,9 +1403,63 @@ function init() {
   const vh = () => document.documentElement.style.setProperty("--vh", window.innerHeight * 0.01 + "px");
   vh(); window.addEventListener("resize", vh); window.addEventListener("orientationchange", vh);
 
-  if (!S.apiKey) {
+  if (!curKey()) {
     go("parent");
-    $("#settingsMsg").textContent = "はじめに、おうちの方がAPIキーを設定してください";
+    $("#settingsMsg").textContent = "はじめに、おうちの方が使うAIとAPIキーを設定してください";
+  }
+}
+
+/* ═══════════════ AIプロバイダの設定画面 ═══════════════ */
+
+function renderProviderUI() {
+  const p = curProvider();
+  $("#provider").value = S.provider;
+  $("#providerNote").textContent = p.note;
+
+  $("#model").value = curModel();
+  $("#modelList").innerHTML = p.models
+    .map((m) => `<option value="${esc(m.id)}">${esc(m.label || "")}</option>`).join("");
+  $("#modelNote").innerHTML = modelNoteHtml(p);
+
+  const needBase = !!p.needsBaseUrl;
+  $("#baseUrlRow").hidden = !needBase;
+  if (needBase) $("#baseUrl").value = curBaseUrl();
+
+  $("#apiKeyLabel").firstChild.nodeValue = p.keyLabel;
+  $("#apiKey").placeholder = p.keyPlaceholder;
+  $("#apiKey").value = curKey();
+  $("#keyNote").innerHTML =
+    `<a href="${p.keyUrl}" target="_blank" rel="noopener">${esc(new URL(p.keyUrl).host)}</a> で取得できます。`;
+}
+
+/** モデルごとの目安金額。価格が不明なものは出さない */
+function modelNoteHtml(p) {
+  const rows = p.models.filter((m) => m.inUsd != null).map((m) => {
+    const yen = costPerTurnYen(S.provider, m.id);
+    return `${esc(m.label)} … 1往復あたり<b>約${yen}円</b>`;
+  });
+  if (!rows.length) return "モデル名は提供元の表記どおりに入力してください。";
+  return rows.join(" / ") +
+    "<br>※ 入力8,000・出力800トークン、1ドル155円で計算した目安です。実際の請求は提供元の画面で確認してください。";
+}
+
+async function fetchModelList() {
+  const key = $("#apiKey").value.trim() || curKey();
+  if (!key) { $("#settingsMsg").textContent = "先にAPIキーを入れてください"; return; }
+  const btn = $("#fetchModels");
+  btn.disabled = true; btn.textContent = "取得中…";
+  try {
+    const base = curProvider().needsBaseUrl ? ($("#baseUrl").value.trim() || curBaseUrl()) : "";
+    const list = await listModels(S.provider, key, base);
+    if (!list.length) throw new Error("使えるモデルが見つかりませんでした");
+    $("#modelList").innerHTML = list
+      .map((m) => `<option value="${esc(m.id)}">${esc(m.label || "")}</option>`).join("");
+    $("#settingsMsg").textContent = `${list.length}件のモデルを取得しました。モデル欄をタップすると選べます`;
+  } catch (e) {
+    $("#settingsMsg").textContent = (e instanceof ApiError ? e.friendly() : String(e.message || e));
+  } finally {
+    btn.disabled = false; btn.textContent = "使えるモデルの一覧を取得";
+    setTimeout(() => ($("#settingsMsg").textContent = ""), 6000);
   }
 }
 

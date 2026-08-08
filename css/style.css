@@ -68,6 +68,8 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
 
 .card[hidden] { display: none !important; }
+/* display を明示した要素にも hidden を効かせる */
+[hidden] { display: none !important; }
 .card { transition: background-color .3s; background: var(--card); border-radius: var(--r); box-shadow: var(--sh); padding: 16px; margin-bottom: 12px; }
 .card.accent-card { border-left: 3px solid var(--accent); }
 .ct { font-size: 14px; font-weight: 700; margin-bottom: 8px; letter-spacing: .02em; }
@@ -121,6 +123,9 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .tl-name { flex: 1; min-width: 0; }
 .tl-sub { font-size: 10.5px; color: var(--ink3); }
 
+.note-box { background: var(--accent-soft); border-radius: 10px; padding: 12px; margin: 12px 0; }
+.note-box b { font-size: 12px; color: var(--ink); }
+.note-box p { font-size: 11.5px; color: var(--ink2); line-height: 1.8; margin-top: 5px; }
 .interleave-banner { background: #fff8e8; border: 1px solid #f2e2bd; border-radius: 10px; padding: 11px; margin-bottom: 10px; }
 .interleave-banner b { font-size: 12px; color: var(--amber); }
 .interleave-banner p { font-size: 11.5px; color: var(--ink2); line-height: 1.7; margin-top: 4px; }

@@ -413,9 +413,35 @@
 
   <div class="card">
     <h2 class="ct">▶ 設定</h2>
-    <label class="lbl">Claude APIキー
-      <input type="password" id="apiKey" class="inp" placeholder="sk-ant-api03-…"></label>
-    <p class="cs"><a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a> で取得。キーはこの端末のブラウザ内にのみ保存されます。</p>
+
+    <label class="lbl">使うAI
+      <select id="provider" class="select"></select></label>
+    <p class="cs" id="providerNote"></p>
+
+    <label class="lbl">モデル
+      <input type="text" id="model" class="inp" list="modelList" placeholder="モデル名">
+      <datalist id="modelList"></datalist></label>
+    <p class="cs" id="modelNote"></p>
+    <button class="btn btn-ghost" id="fetchModels">使えるモデルの一覧を取得</button>
+
+    <label class="lbl" id="baseUrlRow" hidden>APIのURL(ベースURL)
+      <input type="text" id="baseUrl" class="inp" placeholder="https://openrouter.ai/api/v1"></label>
+
+    <label class="lbl" id="apiKeyLabel">APIキー
+      <input type="password" id="apiKey" class="inp" placeholder="…"></label>
+    <p class="cs" id="keyNote"></p>
+    <p class="cs">キーはこの端末のブラウザ内にのみ保存されます。AIごとに別々に覚えるので、切り替えても入れ直す必要はありません。</p>
+
+    <div class="note-box">
+      <b>安いAIに替えると、何が変わるか</b>
+      <p>会話・出題・記録・写真の読み取りは、どのAIでも同じように動きます。ただし<b>安いモデルほど、次の3つが弱くなる傾向</b>があります。
+        ①手書きの答案や問題集の写真を正確に読み取る力 ②「わかったつもり」を見抜いて前提までさかのぼる判断
+        ③つらそうなときの言葉の選び方。<br>
+        <b>まず安いモデルで1〜2週間試して、物足りなければ上げる</b>のがおすすめです。学習記録は共通なので、
+        いつ切り替えても今までの記録はそのまま引き継がれます。</p>
+      <p>※ 「OpenAI互換」は提供元によっては<b>ブラウザからの直接呼び出しを許可していない</b>ことがあり、その場合は通信エラーになります。
+        ブラウザ利用に対応した提供元(OpenRouterなど)をお選びください。</p>
+    </div>
     <div class="form-row">
       <label class="lbl">名前<input type="text" id="pName" class="inp" placeholder="沙和"></label>
       <label class="lbl">学年<select id="pGrade" class="select"></select></label>
@@ -456,6 +482,7 @@
 <script src="js/admission.js"></script>
 <script src="js/guardian.js"></script>
 <script src="js/personas.js"></script>
+<script src="js/providers.js"></script>
 <script src="js/api.js"></script>
 <script src="js/app.js"></script>
 </body>
