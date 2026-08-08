@@ -1,0 +1,86 @@
+# ============================================================
+#  沙和ナビ — エックスサーバー等(Apache)向け設定
+#
+#  ⚠ サーバーパネルの「アクセス制限」を使うと、このファイルに
+#     Basic認証の記述が自動で追記されます。順番は次の通りに:
+#       1. このファイルをアップロード
+#       2. そのあとサーバーパネルでアクセス制限をON
+#     逆にすると、この内容が消える場合があります。
+#
+#  このファイルは、アプリ本体と同じ場所に置いてください。
+#  サブディレクトリ(例 /sawa/)配置でも、そのフォルダに置けば
+#  そのフォルダ以下だけに効きます。動作確認済みです。
+# ============================================================
+
+# ── 1. 常時HTTPS(必須) ────────────────────────────────
+#  Service Worker(オフライン起動)、共有シート、クリップボードは
+#  すべて HTTPS でないと動きません。
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+</IfModule>
+
+# ── 2. MIMEタイプ ────────────────────────────────────
+<IfModule mod_mime.c>
+  AddType text/javascript .js
+  AddType image/png       .png
+  AddCharset UTF-8        .html .css .js .json
+</IfModule>
+#  manifest.json だけを PWA 用の型にする。
+#  (.json 全体に付けると将来ふつうのJSONを置いたとき壊れるため)
+<Files "manifest.json">
+  ForceType application/manifest+json
+</Files>
+
+# ── 3. キャッシュ ────────────────────────────────────
+#  sw.js と manifest.json をキャッシュさせると更新が届かなくなります。
+<IfModule mod_headers.c>
+  <FilesMatch "^(sw\.js|manifest\.json)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+  </FilesMatch>
+  <FilesMatch "\.(html)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+  <FilesMatch "\.(css|js)$">
+    Header set Cache-Control "public, max-age=3600"
+  </FilesMatch>
+  <FilesMatch "\.(png|ico|svg)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+
+  # ── 4. セキュリティヘッダ ──────────────────────────
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "no-referrer"
+  Header set X-Frame-Options "SAMEORIGIN"
+  # 検索エンジンに載せない(家族用のため)
+  Header set X-Robots-Tag "noindex, nofollow, noarchive"
+</IfModule>
+
+# ── 5. ファイル一覧を見せない ─────────────────────────
+Options -Indexes
+
+# ── 6. 不要ファイルへのアクセスを塞ぐ ───────────────────
+<FilesMatch "^(\.htaccess|\.git|.*\.md|package.*\.json)$">
+  Require all denied
+</FilesMatch>
+<IfModule !mod_authz_core.c>
+  <FilesMatch "^(\.htaccess|\.git|.*\.md)$">
+    Order allow,deny
+    Deny from all
+  </FilesMatch>
+</IfModule>
+
+# ── 7. 圧縮 ─────────────────────────────────────────
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json
+</IfModule>
+
+# ── 8. 文字化け防止 ──────────────────────────────────
+<IfModule mod_headers.c>
+  <FilesMatch "\.html$">
+    Header set Content-Type "text/html; charset=UTF-8"
+  </FilesMatch>
+</IfModule>

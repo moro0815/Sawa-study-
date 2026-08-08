@@ -1,0 +1,8 @@
+# 家族専用のため、検索エンジンには載せません。
+#
+# 注意: robots.txt はドメインの一番上(例 https://example.com/robots.txt)に
+# 置いたときだけ読まれます。サブディレクトリ(例 /sawa/robots.txt)に置いても
+# 無視されます。その場合は .htaccess の X-Robots-Tag と、
+# 各HTMLの <meta name="robots"> が代わりに効きます(どちらも設定済み)。
+User-agent: *
+Disallow: /
