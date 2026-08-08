@@ -474,6 +474,16 @@
   </div>
 
   <div class="card">
+    <h2 class="ct">▶ バージョン</h2>
+    <div class="row-kv"><span>このファイルの版</span><b id="appVersion">—</b></div>
+    <div class="row-kv"><span>端末に入っている版</span><b id="swVersion">—</b></div>
+    <p id="verMsg" class="ok-msg"></p>
+    <button class="btn btn-ghost" id="checkUpdate">最新のファイルを読み込み直す</button>
+    <p class="cs">サーバーにファイルを上げ直したあと、ここの2つが揃っていれば更新できています。<br>
+      揃っていなければボタンを押してください。<b>学習記録・宿題・成績は消えません。</b></p>
+  </div>
+
+  <div class="card">
     <h2 class="ct">▶ データ</h2>
     <button class="btn btn-ghost" id="exportData">学習データを書き出す(JSON)</button>
     <label class="btn btn-ghost file-btn">学習データを読み込む<input type="file" id="importData" accept="application/json" hidden></label>

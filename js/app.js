@@ -3,6 +3,8 @@
    ========================================================================= */
 
 const KEY = "sawa-navi-v2";
+/* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
+const APP_VERSION = "v7";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1523,6 +1525,31 @@ function init() {
     save(); renderProviderUI(); renderAll();
     $("#settingsMsg").textContent = "保存しました";
     setTimeout(() => ($("#settingsMsg").textContent = ""), 2500);
+  };
+
+  // バージョン表示と更新確認
+  $("#appVersion").textContent = APP_VERSION;
+  $("#swVersion").textContent = "確認中…";
+  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+    caches.keys().then((ks) => {
+      const c = ks.find((k) => k.startsWith("sawa-navi-"));
+      $("#swVersion").textContent = c ? c.replace("sawa-navi-", "") : "なし";
+      const match = c && c.replace("sawa-navi-", "") === APP_VERSION;
+      $("#verMsg").textContent = match ? "最新の状態です" : "古いファイルが残っています。下のボタンを押してください";
+      $("#verMsg").className = match ? "ok-msg" : "ok-msg warn-msg";
+    });
+  } else {
+    $("#swVersion").textContent = "—";
+    $("#verMsg").textContent = "";
+  }
+  $("#checkUpdate").onclick = async () => {
+    $("#verMsg").textContent = "確認しています…";
+    try {
+      for (const k of await caches.keys()) if (k.startsWith("sawa-navi-")) await caches.delete(k);
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (reg) { await reg.update(); }
+      location.reload(true);
+    } catch (_) { location.reload(true); }
   };
 
   // データ
