@@ -1484,3 +1484,10 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .kn-s { font-size: 12px; line-height: 1.8; margin-top: 7px; padding: 8px 10px;
   background: rgba(255,255,255,.7); border-radius: 9px; color: var(--ink2); }
 .kn-go { margin-top: 10px; max-width: none; width: 100%; }
+
+/* ── 初期化PINの道順 ────────────────────────────────── */
+.pin-steps { margin: 10px 0 12px; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; }
+.pin-steps li { font-size: 12.5px; line-height: 1.75; }
+.pin-k { display: inline-block; background: var(--accent-soft); color: var(--accent);
+  border-radius: 6px; padding: 1px 7px; font-weight: 700; font-size: 12px; }
+.pin-note { display: block; font-size: 11px; color: var(--ink3); line-height: 1.7; }

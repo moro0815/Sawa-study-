@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v34";
+const APP_VERSION = "v35";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -3922,6 +3922,9 @@ async function renderServerBackup() {
      以前は「最初に叩いた端末が合言葉を持っていける」形だったので、
      URLを先に知られると横取りされる余地があった。
      PINは public_html の外に置かれるので、URLを知っただけでは読めない。 */
+  /* ★「sawa-backups フォルダの init-pin.txt」とだけ書いても、
+     どこをどう開けばよいか分かりません。実際の道順を画面に出します。 */
+  const host = location.hostname;
   box.innerHTML = (found.exposed ? `<div class="bk-notice warn">
       <b>⚠ 保存先が public_html の中になっています</b>
       <p>本来は public_html の【外】に置きます。サーバー構成の都合で外に取れませんでした。<br>
@@ -3929,10 +3932,20 @@ async function renderServerBackup() {
         <b>設定が終わったら、念のため PIN のファイルを消してください</b>(自動でも消えます)。</p></div>` : "") +
     `<div class="bk-notice warn">
       <b>準備ができています。あと1ステップです</b>
-      <p><b>PINを確認してください。</b>サーバーが自動で作っています。<br>
-        エックスサーバーのファイル管理を開き、<br>
-        <code>${esc(found.pin_where || "public_html と同じ階層の sawa-backups フォルダ")}</code><br>
-        を開くと、8文字のPINが書いてあります。</p></div>
+      <p>サーバーが<b>PINを1つ自動で作りました</b>。下の道順で見てください。<br>
+        <b>ここでしか読めない場所</b>に置いてあるので、URLを知られても取られません。</p></div>
+    <ol class="pin-steps">
+      <li><b>エックスサーバーのサーバーパネル</b>にログイン</li>
+      <li><span class="pin-k">ファイル管理</span> を開く</li>
+      <li>${found.exposed
+          ? `<span class="pin-k">${esc(host)}</span> → <span class="pin-k">public_html</span> → <span class="pin-k">api</span> → <span class="pin-k">data</span> の順に開く`
+          : `<span class="pin-k">${esc(host)}</span> を開く<br>
+             <span class="pin-note">public_html と<b>同じ並び</b>に <span class="pin-k">sawa-backups</span> があります。その中へ</span>`}</li>
+      <li><span class="pin-k">init-pin.txt</span> の右にある <b>編集</b> を押す<br>
+        <span class="pin-note">(ダウンロードして開いても構いません)</span></li>
+      <li>中に書いてある<b>8文字</b>を、下に入れる<br>
+        <span class="pin-note">例:<code>DWQNDCRP</code> — 数字の 0・1 と、文字の O・I は使っていません</span></li>
+    </ol>
     <label class="lbl">PIN(8文字)
       <input type="text" id="srvPin" class="inp" placeholder="例:ABCD2345"
         autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="16"></label>
