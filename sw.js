@@ -1,9 +1,9 @@
 /* オフラインでも開けるように。APIへの通信はキャッシュしない */
-const CACHE = "sawa-navi-v25";
+const CACHE = "sawa-navi-v26";
 const ASSETS = [
   "./", "./index.html", "./share.html", "./manifest.json",
   "./css/style.css",
-  "./js/evidence.js", "./js/curriculum.js", "./js/homework.js", "./js/learning.js", "./js/memory.js", "./js/luke.js", "./js/speech.js", "./js/camera.js", "./js/karte.js", "./js/english.js", "./js/careers.js",
+  "./js/evidence.js", "./js/curriculum.js", "./js/homework.js", "./js/learning.js", "./js/memory.js", "./js/luke.js", "./js/speech.js", "./js/camera.js", "./js/cause.js", "./js/transfer.js", "./js/karte.js", "./js/english.js", "./js/careers.js",
   "./js/exam.js", "./js/admission.js", "./js/guardian.js", "./js/stage.js",
   "./js/personas.js", "./js/providers.js", "./js/api.js", "./js/app.js", "./js/share.js",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png",

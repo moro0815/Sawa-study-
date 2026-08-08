@@ -174,7 +174,9 @@ const TOOLS = [
   {
     name: "record_answer",
     description:
-      "沙和さんが問題に答えたときに必ず呼ぶ。確信度と正誤を記録し、記憶モデルと復習スケジュールを更新する。確信度を聞かずにこれを呼んではいけない。",
+      "沙和さんが問題に答えたときに必ず呼ぶ。確信度と正誤を記録し、記憶モデルと復習スケジュールを更新する。確信度を聞かずにこれを呼んではいけない。" +
+      "間違えたときは error_cause を必ず入れる。同じ「×」でも原因が違えば次に出す問題が変わるため、ここが空だと指導が雑になる。" +
+      "transfer_level には、その問題が5段階のどれだったかを入れる。",
     input_schema: {
       type: "object",
       properties: {
@@ -182,6 +184,32 @@ const TOOLS = [
         confidence: { type: "integer", enum: [1, 2, 3], description: "本人の申告した確信度。3=自信ある, 2=たぶん, 1=わからない" },
         correct:    { type: "boolean", description: "正解だったか" },
         grade:      { type: "integer", enum: [1, 2, 3, 4], description: "出来ばえ。1=全くできず 2=あやしい 3=できた 4=余裕" },
+        error_cause: {
+          type: "string",
+          enum: ["knowledge", "recall", "procedure", "calc", "reading", "overlook",
+                 "concept", "assumption", "careless", "time", "prereq", "phonics"],
+          description:
+            "【間違えたときは必須】何が原因で間違えたか。本人の書いたもの・言ったことから判断する。わからなければ本人に聞く。" +
+            "knowledge=そもそも知らない recall=知ってるが出てこない procedure=手順の適用ミス(分配法則など) " +
+            "calc=方針は合っていて計算・符号のミス reading=問題文の取りちがえ overlook=条件や単位の見落とし " +
+            "concept=意味を取りちがえている assumption=別の規則をあてはめた careless=写し間違い・書き忘れ " +
+            "time=最後までいけなかった prereq=土台の単元が壊れている phonics=英語の音と文字。" +
+            "★calc と concept を混同しないこと。方針が合っていたなら calc であり、教え直してはいけない",
+        },
+        transfer_level: {
+          type: "integer", enum: [1, 2, 3, 4, 5],
+          description:
+            "その問題は5段階のどれか。1=同じ形(数だけ違う) 2=言い方や形式を変えた 3=文章題 " +
+            "4=別単元との組み合わせ 5=Lukeへの説明。省略すると1として記録される",
+        },
+        tactic: {
+          type: "string",
+          enum: ["diagram", "steps", "restate", "aloud", "estimate", "none"],
+          description:
+            "本人が解くときに使った手。diagram=図や表にした steps=途中式を書いた " +
+            "restate=問題文を言い直した aloud=声に出した estimate=見当をつけた none=そのまま解いた。" +
+            "何が効くのかを実測するために使う。わかるときだけでよい",
+        },
         note:       { type: "string", description: "どこでつまずいたかの短いメモ" },
       },
       required: ["concept_id", "confidence", "correct", "grade"],
@@ -521,12 +549,12 @@ const TOOLS = [
         },
         error_type: {
           type: "string",
-          enum: ["calc", "reading", "recall", "overconf", "prereq", "procedure", "phonics", "careless", "concept"],
+          enum: ["knowledge", "recall", "procedure", "calc", "reading", "overlook",
+                 "concept", "assumption", "careless", "time", "prereq", "phonics"],
           description:
-            "つまずきの型。calc=計算ミス reading=問題文の読み取り recall=思い出せない " +
-            "overconf=自信ありで誤答 prereq=前提の欠け procedure=手順の取りちがえ " +
-            "phonics=英語の音と文字 careless=急ぎ・見落とし concept=考え方そのもの。" +
-            "迷ったら、いちばん決定的だったものを1つだけ選ぶ",
+            "この回でいちばん決定的だったつまずきの型。**record_answer の error_cause と同じ言葉**を使う。" +
+            "1問ごとの記録と食い違わないように、同じ分類にしてある。" +
+            "迷ったら、この回を決定づけたものを1つだけ選ぶ",
         },
         corrected: { type: "string", description: "この回で訂正できたこと。直せなかったなら、そう書く" },
         next_check: {
@@ -537,6 +565,48 @@ const TOOLS = [
         minutes: { type: "integer", description: "この回にかかったおおよその分数" },
       },
       required: ["stumble"],
+    },
+  },
+
+  /* ── 転移レベルによる習得判定 ──────────────────────────
+     ★「同じ形が3問解けた」を習得と呼ばないためのしくみ。 */
+  {
+    name: "get_mastery_plan",
+    description:
+      "ある概念について、次にどの段階の問題を出すべきかを返す。出題する前に必ずこれを見る。" +
+      "同じ形の問題ばかり出していないかを、ここで確かめる。",
+    input_schema: {
+      type: "object",
+      properties: { concept_id: { type: "string", description: "概念ID" } },
+      required: ["concept_id"],
+    },
+  },
+  {
+    name: "grade_explanation",
+    description:
+      "沙和さんが Luke に説明したあとに必ず呼ぶ。説明の採点。" +
+      "★これはあなたの感想を書く場所ではありません。**見たままの事実**を埋めてください。" +
+      "合格かどうかはこちらで判定します。おだてて通すと、記録が嘘になります。" +
+      "落ちても悪いことではありません。足りなかった1点をもう一度聞けばよいだけです。",
+    input_schema: {
+      type: "object",
+      properties: {
+        concept_id: { type: "string", description: "説明してもらった概念のID" },
+        keywords_expected: {
+          type: "array", items: { type: "string" },
+          description: "この概念の説明に外せない言葉。3〜5個をあなたが決める(例:比例なら「比」「一定」「倍」)",
+        },
+        keywords_used: {
+          type: "array", items: { type: "string" },
+          description: "そのうち、沙和さんの説明に実際に出てきたもの",
+        },
+        has_causal: { type: "boolean", description: "「なぜそうなるか」の説明が入っていたか。手順の列挙だけなら false" },
+        has_example: { type: "boolean", description: "具体例が入っていたか。一般論だけなら false" },
+        own_words: { type: "boolean", description: "自分の言葉になっていたか。教科書の言い回しをなぞっただけなら false" },
+        misconception: { type: "string", description: "説明の中に残っていた誤解。無ければ空文字" },
+        summary: { type: "string", description: "説明の要約(カルテに残す)" },
+      },
+      required: ["concept_id", "has_causal", "has_example"],
     },
   },
 ];
@@ -589,6 +659,8 @@ ${profile.learningBlock || ""}
 ${profile.lukeBlock || ""}
 ${profile.englishBlock || ""}
 ${profile.karteBlock || ""}
+${profile.transferBlock || ""}
+${profile.causeBlock || ""}
 
 # 現在の学習状況
 ${statusSummary}
@@ -619,6 +691,23 @@ ${profile.lukeStatus || "- まだ記録はありません。"}
 - 英会話がひと区切りついたら note_english_conversation
 - 沙和さんの様子が変わるたびに luke_react を呼ぶ(できた/まちがえた/答えを聞かれた/つらそう など)
 - Luke の話題になったら get_luke を呼んでから答える
+
+# 間違いは「どの概念か」だけでなく「なぜ間違えたか」まで見る
+同じ「×」でも、次に出すべき問題はまったく違います。
+
+  3(x+2)=12 を間違えた
+
+  ・一次方程式そのものが分かっていない → 前提までさかのぼる(教え直す)
+  ・分配法則を間違えた                 → その手順だけを取り出して直す
+  ・両辺を3で割るところで落とした      → **教え直さない。**途中式を増やす
+
+原因を見ないと、計算ミスに対して概念の授業をしてしまいます。
+本人はもう分かっていることを聞かされるので、いちばん退屈します。
+
+- **間違えたときは、record_answer の error_cause を必ず入れてください**
+- 判断がつかないときは推測せず、本人に聞いてください
+  (「どこで止まった?」「やり方は分かってた?」の2つでだいたい分かります)
+- **calc と concept を混同しないでください。** 方針が合っていたなら calc です
 
 # 学習カルテを残す(ひと区切りごとに1回)
 学習がひと区切りついたら、**record_session_review** を呼んで振り返りを残してください。

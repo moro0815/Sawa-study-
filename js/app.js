@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v25";
+const APP_VERSION = "v26";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -42,6 +42,9 @@ const defaults = () => ({
   apiLog: [],            // 直近のAPI呼び出し記録
   eng: {},               // 英語 {pron, words, conv, log} — 発音の記録・単語の記憶状態・会話回数
   luke: {},              // 相棒 Luke {bornAt, metAt, tricks, memories, mood, pats, taught}
+  ansLog: [],            // 1問ごとの記録(原因・転移レベル・時刻・使った手)。cause.js
+  ansAgg: null,          // 古いログを落としても残す集計
+  tr: {},                // 概念ID -> 転移レベルの状態。transfer.js
   karte: [],             // 学習カルテ(AIの自己評価ログ)。karte.js を参照
   karteAgg: null,        // 古い記録を落としても残す集計 {total, types, subjects, first}
   homework: [],          // [{id, source, title, items, due, ...}] 学校ぶん＋AIぶん
@@ -381,6 +384,11 @@ function fmtTime(ms) {
   const t = Math.floor(ms / 1000);
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 }
+/** いま何分続けているか。計測していなければ null(推測で埋めない) */
+function timerMinutes() {
+  if (!timer.on) return null;
+  return Math.round((timer.elapsed + (Date.now() - timer.start)) / 60000);
+}
 function toggleTimer() {
   if (timer.on) {
     const add = Date.now() - timer.start;
@@ -418,16 +426,36 @@ async function runTool(name, input) {
       if (!sess) { sess = { date: d, answered: 0, correct: 0 }; S.sessions.push(sess); }
       sess.answered++; if (input.correct) sess.correct++;
 
+      /* ★1問ぶんの記録 — 何時か・始めて何分か・どの手を使ったかまで残す。
+         これがたまると「夜は計算ミスが増える」が実測で言えるようになる。 */
+      const cause = input.correct ? "" : (input.error_cause || "");
+      const lvl = input.transfer_level || 1;
+      logAnswer(S, {
+        conceptId: c.id, subject: SUBJECTS[c.s]?.name || "", correct: !!input.correct,
+        confidence: input.confidence, cause, level: lvl, tactic: input.tactic,
+        minsIn: timerMinutes(),
+      });
+      const tr = noteTransfer(S, c.id, lvl, !!input.correct);
+
       // Luke はここで必ず反応する(AIが luke_react を忘れても動くように)
       lukeReact(S, r.quadrant === "hi-wrong" ? "hiwrong" : input.correct ? "correct" : "wrong");
       save(); renderAll();
 
       const q = QUADRANTS[r.quadrant];
       if (r.quadrant === "hi-wrong") toast("🚨 わかったつもり発見 — ここが一番伸びる場所です");
+      const next = nextChallenge(S, c.id);
+      const cz = cause ? ERROR_CAUSES[cause] : null;
       return {
         recorded: c.n, quadrant: r.quadrant, quadrant_name: q.name,
         mastery: Math.round(st.mastery * 100) / 100,
         next_review_in_days: Math.round(r.interval * 10) / 10,
+        /* ★原因ごとの手当て。ここが空だと「とりあえず教え直す」になる */
+        cause: cz ? cz.label : (input.correct ? "" : "(未分類 — 次回は error_cause を入れてください)"),
+        cause_action: cz ? cz.move : "",
+        transfer: next.done
+          ? `Lv${next.top} まで通りました。この概念は「できた」で構いません`
+          : `次は Lv${next.level} ${next.label}(あと${next.need}問)— ${next.ask}`,
+        transfer_advanced: tr.advanced ? `Lv${tr.lv} に上がりました` : "",
         instruction: r.quadrant === "hi-wrong"
           ? "【重要】自信ありで間違えました。ハイパーコレクション効果が働く最大の学び所です。訂正したあと、必ず同じ型の問題をもう1問すぐに出してください。これをやらないと1週間後に誤りが戻ります。"
           : r.quadrant === "lo-right"
@@ -789,6 +817,57 @@ async function runTool(name, input) {
                instruction: "直すのは2〜3点までにしてください。多く言うほど、次に話す量が減ります。" };
     }
 
+    /* ── 転移レベルによる習得判定 ────────────────────
+       「同じ形が3問解けた」を習得と呼ばないためのしくみ。 */
+    case "get_mastery_plan": {
+      const c = CONCEPT_MAP[input.concept_id];
+      if (!c) return { error: "unknown concept_id" };
+      const n = nextChallenge(S, c.id);
+      return {
+        concept: c.n,
+        reached_level: masteredLevel(S, c.id),
+        required_top_level: n.top,
+        why: n.reason,
+        mastered: n.done,
+        next_level: n.done ? null : n.level,
+        next_label: n.done ? null : n.label,
+        remaining_at_this_level: n.done ? 0 : n.need,
+        what_to_ask: n.done ? "この概念はもう出さなくて構いません。復習の巡回にまかせてください。" : n.ask,
+        ladder: transferLadder(S, c.id).map((l) => `Lv${l.lv} ${l.label} … ${l.state}`),
+      };
+    }
+
+    case "grade_explanation": {
+      const c = CONCEPT_MAP[input.concept_id];
+      if (!c) return { error: "unknown concept_id" };
+      const v = gradeExplanation(S, c.id, input);
+      // 説明できたこと自体はプロテジェ効果の本体。合否に関わらずLukeは喜ぶ
+      lukeReact(S, "taught");
+      if (input.summary) {
+        addKarte(S, {
+          subject: SUBJECTS[c.s]?.name || "", concept_ids: [c.id],
+          stumble: `Lukeへの説明(${c.n})`, corrected: String(input.summary).slice(0, 240),
+          error_type: v.passed ? "" : "concept",
+          next_check: v.passed ? "" : `${c.n} を、${v.missing[0] || "もう一度"} の点からもう一度説明させる`,
+        });
+      }
+      save(); renderAll();
+      if (v.passed) toast(`🐾 ${c.n} — Lukeに説明できました`);
+      return {
+        concept: c.n,
+        passed: v.passed,
+        missing: v.missing,
+        attempts: v.attempts,
+        mastered: isMastered(S, c.id),
+        instruction: v.passed
+          ? "合格です。**手順の暗記では説明は通りません。**本当に分かったと言ってよい状態です。"
+            + "短く、具体的にほめてください(『説明できるのがいちばん強い』)。"
+          : `まだ通っていません。**やり直しを命じないでください。**足りなかったのは「${v.missing[0]}」の1点だけです。`
+            + "そこだけをもう一度聞いてください(『じゃあ、なんでそうなるのかLukeに教えてあげて?』)。"
+            + "落ちたことを本人に伝える必要はありません。",
+      };
+    }
+
     /* ── 学習カルテ ────────────────────────────────
        AIに毎回「どうつまずいて、どう直ったか」を書かせる。
        ためた内容は kartePromptBlock() で次回のプロンプトに戻る。 */
@@ -930,6 +1009,8 @@ async function send(override) {
         lukeBlock: lukePromptBlock(S, S.persona),
         lukeStatus: lukeStatusText(S),
         karteBlock: kartePromptBlock(S),
+        transferBlock: transferPromptBlock(S),
+        causeBlock: causePromptBlock(S),
       }, statusSummary()),
       messages: S.apiMessages,
       tools: TOOLS,
@@ -1261,8 +1342,23 @@ function renderPersona() {
     aibou: ["ちょっと聞いてよ", "今日つかれた", "オレに教えて(説明したい)", "学校でこんなことがあった"],
     bansousha: ["今週の計画を立てたい", "テストが不安", "この成績どう思う?", "目標を決めたい"],
   }[S.persona];
-  $("#quickRow").innerHTML = qa.map((t) => `<button class="qa">${esc(t)}</button>`).join("");
-  $$("#quickRow .qa").forEach((b) => b.onclick = () => send(b.textContent));
+  /* ★沙和さんに見える「深さ」の入口は、これ1つだけにしてある。
+     転移レベルも誤答原因も画面には出さない。裏で回っていれば十分で、
+     本人がやることは「問題を解く」「自信を押す」「Lukeに説明する」の3つ。 */
+  const ready = explainReady(S);
+  const rows = ready
+    ? [`🐾 ${ready.n} をLukeに説明する`, ...qa.slice(0, 3)]
+    : qa;
+  $("#quickRow").innerHTML = rows.map((t, i) =>
+    `<button class="qa${ready && i === 0 ? " qa-star" : ""}">${esc(t)}</button>`).join("");
+  $$("#quickRow .qa").forEach((b) => b.onclick = () => {
+    if (b.classList.contains("qa-star") && ready) {
+      S.persona = "aibou"; S.personaPinned = true; save(); renderPersona(); 
+      send(`${ready.n} を Luke に説明してみる。小学生にもわかるように話すから、聞いてて。`);
+      return;
+    }
+    send(b.textContent);
+  });
 }
 
 function renderWeak() {
@@ -1392,6 +1488,25 @@ function renderDiag(conceptId) {
     html += `</div>`;
     html += `<button class="btn btn-primary" id="askDiag">この診断をミミ先生に相談する</button>`;
   }
+  /* ★理解の深さ(転移レベル)のはしご。
+     「記憶の強さ」と「理解の深さ」は別の軸なので、並べて出す。
+     同じ形が解けただけで緑にしないためのしくみが目に見えるようにする。 */
+  const lad = transferLadder(S, conceptId);
+  const done = isMastered(S, conceptId);
+  html += `<div class="tl-box">
+    <div class="tl-head">理解の深さ${done ? `<span class="tl-done">✓ マスター</span>` : ""}</div>
+    <p class="cs">同じ形の問題が解けることと、わかっていることは別です。段を上げながら確かめます。</p>
+    <div class="tl-rows">` +
+    lad.map((l) => `<div class="tl-r ${l.state}">
+      <span class="tl-ic">${l.state === "done" ? "✓" : l.icon}</span>
+      <span class="tl-l"><b>${esc(l.label)}</b><i>${esc(l.what)}</i></span>
+      ${l.state === "now" ? `<span class="tl-need">あと${Math.max(0, l.needed - l.hits)}問</span>` : ""}
+    </div>`).join("") + `</div>` +
+    (lad.length === 5
+      ? `<p class="cs">この単元は<b>ほかの単元の土台</b>なので、最後にLukeへの説明まで求めます。</p>`
+      : `<p class="cs">この単元は土台ではないので、組み合わせ問題まで通れば十分です。</p>`) +
+    `</div>`;
+
   $("#diagResult").innerHTML = html;
   const btn = $("#askDiag");
   if (btn) btn.onclick = () => {
@@ -1925,7 +2040,7 @@ function renderKarte() {
             <span class="kt-n">${r.n}回 / ${Math.round(r.share * 100)}%</span></div>
           <div class="bar"><i style="width:${Math.round(r.share * 100)}%"></i></div>
           <p class="kt-w">${esc(r.what)}</p>
-          <p class="kt-m">→ ${esc(r.move)}</p>
+          <p class="kt-m">→ ${esc(plainMove(r.id))}</p>
         </div>`).join("");
 
     const bys = karteBySubject(S);
@@ -1977,8 +2092,48 @@ function renderKarte() {
   }).join("") : `<p class="cs">まだ記録はありません。</p>`;
 }
 
+/* ── 実測でわかった学び方 ────────────────────────────────
+   ★ここが荒れると、このアプリ全体の信用が落ちる。
+     少ないデータで「夜は弱い」と言い出さないよう、
+     cause.js 側で件数と差の大きさの両方で止めている。 */
+function renderPatterns() {
+  const box = $("#patternList");
+  if (!box) return;
+  const pat = findPatterns(S);
+  const cs = causeStats(S, 90);
+
+  $("#patNote").textContent = (S.ansLog || []).length ? `${(S.ansLog || []).length}問ぶん` : "";
+
+  box.innerHTML = !pat.enough
+    ? `<div class="karte-empty">まだ ${(S.ansLog || []).length} 問です。
+        あと ${pat.need} 問ほどたまると、傾向を出せるようになります。<br>
+        <b>少ない記録でパターンを名乗らないようにしています。</b>
+        たまたま出た差を「夜は弱い」と言い切ってしまうのが、いちばん困るからです。</div>`
+    : pat.list.length
+    ? pat.list.map((p) => `<div class="pat">
+        <div class="pat-t">${esc(p.text)}</div>
+        <div class="pat-a">→ ${esc(p.advice)}</div></div>`).join("")
+    : `<div class="karte-empty">${pat.total}問ぶん見ましたが、
+        <b>はっきりした差はまだ出ていません。</b>
+        時間帯でも、続けた時間でも、成績はほぼ変わっていないということです。</div>`;
+
+  const cl = $("#causeList");
+  cl.innerHTML = cs.typed >= 8
+    ? `<h3 class="kt-sub">間違いの原因(直近90日・${cs.wrong}問)</h3>` +
+      cs.ranked.slice(0, 5).map((r) => `<div class="kt">
+        <div class="kt-h"><span class="kt-i">${r.icon}</span><b>${esc(r.label)}</b>
+          <span class="kt-n">${r.n}回 / ${Math.round(r.share * 100)}%</span></div>
+        <div class="bar"><i style="width:${Math.round(r.share * 100)}%"></i></div>
+        <p class="kt-m">→ ${esc(plainMove(r.id))}</p></div>`).join("") +
+      `<p class="cs">${cs.deepShare < 0.35
+        ? "いまは<b>概念の理解より「解き方の詰め」</b>でのつまずきが多い状態です。教え直しを増やすより、途中式や見直しの型を1つ決めるほうが効きます。"
+        : "いまは<b>概念そのもの</b>に手を入れる必要のある間違いが多い状態です。前提までさかのぼる指導になります。"}</p>`
+    : "";
+}
+
 function renderParent() {
   renderKarte();
+  renderPatterns();
 
   /* 今週の一言 */
   const adv = guardianAdvice(S);
