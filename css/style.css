@@ -1029,3 +1029,90 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   #trapBox { columns: 2; column-gap: 16px; }
   .trap { break-inside: avoid; }
 }
+
+/* ══════════ 相棒 Luke ══════════ */
+.luke-card { background: linear-gradient(140deg, #fffaf0, var(--card) 62%); }
+.luke-main { display: flex; gap: 12px; align-items: center; }
+.luke-stage { flex-shrink: 0; width: 116px; display: flex; justify-content: center; }
+.luke-side { flex: 1; min-width: 0; }
+.luke-head-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.luke-name { font-size: 17px; letter-spacing: .04em; }
+.luke-meta { font-size: 10.5px; color: var(--ink3); }
+.luke-say { font-size: 13.5px; color: var(--ink); line-height: 1.7; margin: 6px 0 10px;
+  min-height: 2.6em; animation: lkSay .3s ease; }
+@keyframes lkSay { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.luke-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.luke-btns .btn { max-width: none; flex: 1 1 0; min-width: 0; padding: 8px 4px; font-size: 11.5px; white-space: nowrap; }
+
+/* ── Lukeの体 ── */
+.luke-svg { display: block; overflow: visible; }
+.lk-tail { transform-origin: 146px 152px; animation: lkWag var(--tail, 1s) ease-in-out infinite; }
+@keyframes lkWag { 0%, 100% { transform: rotate(-13deg); } 50% { transform: rotate(18deg); } }
+.lk-head { transform-origin: 100px 128px; transform: rotate(var(--tilt, 0deg)); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
+.lk-ear { transform-origin: 100px 72px; transform: rotate(var(--ear, 0deg)); transition: transform .45s ease; }
+.lk-ear-r { transform: rotate(calc(var(--ear, 0deg) * -1)); }
+.lk-face { transform: translateX(var(--fx, 0px)); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
+.luke-svg.lk-bob { animation: lkBob .5s ease-in-out infinite; }
+@keyframes lkBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.lk-zzz { animation: lkZzz 2s ease-in-out infinite; }
+@keyframes lkZzz { 0% { opacity: 0; transform: translateY(4px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
+.luke-patted { animation: lkPat .7s ease; }
+@keyframes lkPat { 0%, 100% { transform: none; } 25% { transform: rotate(-4deg) scale(1.05); } 60% { transform: rotate(4deg) scale(1.05); } }
+
+/* きもちごとの背景の色味。言葉がなくても伝わるように */
+.luke-stage.mood-treasure { filter: drop-shadow(0 0 12px #ffd98a); }
+.luke-stage.mood-happy    { filter: drop-shadow(0 3px 8px rgba(23,166,115,.28)); }
+.luke-stage.mood-sulk     { filter: grayscale(.18); }
+.luke-stage.mood-lonely   { filter: saturate(.7); }
+.luke-stage.mood-party    { filter: drop-shadow(0 0 14px #ffc4d6); }
+
+/* ── チャットの中の小さいLuke ── */
+.luke-mini { display: flex; align-items: center; gap: 8px; padding: 4px 12px;
+  background: var(--accent-soft); border-radius: 12px; margin: 0 12px 8px; }
+.lkm-art { flex-shrink: 0; }
+.lkm-say { font-size: 12px; color: var(--ink2); line-height: 1.5; }
+
+/* ── 詳細 ── */
+.luke-detail { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+.lk-prof p { font-size: 12.5px; color: var(--ink2); line-height: 1.8; }
+.lk-facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin: 11px 0; }
+.lk-facts > div { background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+.lk-facts span { display: block; font-size: 10px; color: var(--ink3); }
+.lk-facts b { font-size: 15px; }
+.lk-bd { display: block; font-size: 12px; color: var(--ink2); margin-top: 11px; }
+.lk-bd input { display: block; margin: 5px 0 3px; border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px; font-size: 16px; font-family: inherit; background: var(--card); color: inherit; }
+
+.lk-tricks { display: grid; gap: 6px; }
+.lk-tk { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 9px; align-items: center;
+  border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; opacity: .55; background: var(--card); }
+.lk-tk.got { opacity: 1; border-color: #b9e4d0; background: #f4fbf7; }
+.lk-tk-e { font-size: 18px; grid-row: span 2; }
+.lk-tk b { font-size: 13px; }
+.lk-tk-how { grid-column: 2; font-size: 11px; color: var(--ink2); }
+.lk-tk-why { grid-column: 2 / -1; font-size: 10.5px; color: var(--ink3); line-height: 1.6; }
+.lk-tk-ok { grid-row: 1; grid-column: 3; font-size: 10px; font-weight: 700; color: var(--green); }
+
+.lk-moods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lk-mo { text-align: center; background: var(--bg); border-radius: 10px; padding: 9px 5px; }
+.lk-mo-art { display: flex; justify-content: center; height: 60px; overflow: hidden; }
+.lk-mo b { display: block; font-size: 11.5px; margin-top: 4px; }
+.lk-mo span { display: block; font-size: 9.5px; color: var(--ink3); line-height: 1.45; }
+
+.lk-mem { display: grid; gap: 5px; }
+.lk-mm { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center;
+  font-size: 12px; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
+.lk-mm i { font-size: 10px; color: var(--ink3); font-style: normal; }
+
+@media (min-width: 900px) {
+  .luke-stage { width: 168px; }
+  .lk-facts { grid-template-columns: repeat(4, 1fr); }
+  .lk-moods { grid-template-columns: repeat(6, 1fr); }
+  .luke-btns .btn { flex: 0 1 auto; min-width: 92px; }
+}
+
+/* 動きを減らす設定にしている人には、動かさない */
+@media (prefers-reduced-motion: reduce) {
+  .lk-tail, .luke-svg.lk-bob, .lk-zzz, .luke-patted, .luke-say { animation: none !important; }
+  .lk-head, .lk-ear, .lk-face { transition: none !important; }
+}

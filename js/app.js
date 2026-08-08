@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v11";
+const APP_VERSION = "v12";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -41,6 +41,7 @@ const defaults = () => ({
   quizDone: {},          // 勉強法クイズの回答
   apiLog: [],            // 直近のAPI呼び出し記録
   eng: {},               // 英語 {pron, words, conv, log} — 発音の記録・単語のFSRS・会話回数
+  luke: {},              // 相棒 Luke {bornAt, metAt, tricks, memories, mood, pats, taught}
   homework: [],          // [{id, source, title, items, due, ...}] 学校ぶん＋AIぶん
   sessions: [],          // [{date, answered, correct, minutes}]
   career: DEFAULT_CAREER,      // 今の志望(変数。固定しない)
@@ -377,6 +378,9 @@ async function runTool(name, input) {
       let sess = S.sessions.find((x) => x.date === d);
       if (!sess) { sess = { date: d, answered: 0, correct: 0 }; S.sessions.push(sess); }
       sess.answered++; if (input.correct) sess.correct++;
+
+      // Luke はここで必ず反応する(AIが luke_react を忘れても動くように)
+      lukeReact(S, r.quadrant === "hi-wrong" ? "hiwrong" : input.correct ? "correct" : "wrong");
       save(); renderAll();
 
       const q = QUADRANTS[r.quadrant];
@@ -619,6 +623,44 @@ async function runTool(name, input) {
       return { ok: true, total_goals: S.goals.length };
     }
 
+    /* ── 相棒 Luke ─────────────────────────────────── */
+
+    case "luke_react": {
+      const m = lukeReact(S, input.kind);
+      save(); renderLuke();
+      const mood = LUKE_MOODS[m];
+      return {
+        mood: mood.name, mood_id: m, says: lukeLine(S, mood),
+        instruction: m === "treasure"
+          ? "Lukeは【いちばん喜んでいます】。自信ありで間違えた場所は最も強く直るからです。落ち込ませず、見つかったことを一緒に喜んでください。"
+          : m === "tilt"
+          ? "Lukeは首をかしげているだけです。がっかりした様子は出さないでください。間違いで態度を変える犬ではありません。"
+          : m === "sulk"
+          ? "Lukeはそっぽを向いています。ただし怒っていません。答えを渡さないための、ふざけたそっぽです。すぐに戻ります。"
+          : m === "snuggle"
+          ? "Lukeは黙ってすりよっています。解決策を出さず、そのままでいてください。"
+          : "そのまま続けてください。",
+      };
+    }
+
+    case "get_luke": {
+      const a = lukeAge(S), st = lukeStage(S), l = lukeState(S);
+      const next = nextTrick(S);
+      return {
+        name: LUKE_INFO.name, breed: LUKE_INFO.breed,
+        age: a.text, age_in_human_years: a.human, stage: st.name, stage_note: st.note,
+        days_together: daysTogether(S),
+        mood: lukeMood(S).name,
+        tricks_learned: lukeTricks(S).filter((t) => t.got).map((t) => t.name),
+        next_trick: next ? { name: next.name, how: next.how, why: next.why } : null,
+        recent_memories: l.memories.slice(-5).map((m) => `${m.at} ${m.text}`),
+        times_taught_by_sawa: l.taught,
+        instruction:
+          "芸の条件は【良いやり方ができたか】であって、正解の数ではありません。" +
+          "「これができたら芸が増えるよ」とごほうびにしないでください。あとから気づく形にします。",
+      };
+    }
+
     /* ── 英語 ───────────────────────────────────────── */
 
     case "get_english_status": {
@@ -755,6 +797,8 @@ function toolLog(name) {
     add_english_word: "🆕 単語を登録中…",
     record_english_word: "📝 単語の結果を記録中…",
     note_english_conversation: "💬 英会話を記録中…",
+    luke_react: "🐶 Lukeが反応中…",
+    get_luke: "🐾 Lukeの様子を確認中…",
   };
   const el = document.createElement("div");
   el.className = "tool-log"; el.textContent = map[name] || name;
@@ -815,6 +859,8 @@ async function send(override) {
         learningBlock: learningPromptBlock(S),
         englishBlock: englishPromptBlock(S),
         englishStatus: englishStatusText(S),
+        lukeBlock: lukePromptBlock(S),
+        lukeStatus: lukeStatusText(S),
       }, statusSummary()),
       messages: S.apiMessages,
       tools: TOOLS,
@@ -942,6 +988,7 @@ function fileToBase64(file) {
 /* ═══════════════ 描画 ═══════════════ */
 
 function renderAll() {
+  renderLuke();
   renderHomework();
   renderLearn();
   renderEnglish();
@@ -1034,6 +1081,7 @@ function renderPersona() {
     S.persona = b.dataset.pb; save(); renderPersona(); renderHome();
     addMsg("ai", PERSONAS[S.persona].intro);
   });
+  renderLukeMini();
   const qa = {
     sensei: ["今日の分をやりたい", "この前の復習して", "わからないところを診断して", "テストの準備をしたい"],
     aibou: ["ちょっと聞いてよ", "今日つかれた", "オレに教えて(説明したい)", "学校でこんなことがあった"],
@@ -1941,7 +1989,7 @@ function init() {
   if (!S.chat.length) {
     $("#chat").innerHTML = `<div class="hint">話す相手を選んで、話しかけてみてください。<br>
       宿題や問題集は <b>📷</b> から写真で送れます。<br><br>
-      ミミ先生🐰 = 教える人 / コタロー🐕 = 友だち / ナギ🦉 = 伴走者</div>`;
+      ミミ先生🐰 = 教える人 / Luke🐶 = 相棒 / ナギ🦉 = 伴走者</div>`;
   }
 
   renderPersona(); renderKyotsu(); renderAll();
@@ -2055,6 +2103,142 @@ function renderLearn() {
       </div>`;
     }).join("");
   }
+}
+
+/* ═══════════════ 相棒 Luke ═══════════════
+   反応が返ってくることが、この機能のすべて。
+   だから「描き直すきっかけ」をなるべく多く持たせている。 */
+
+let lukeOpen = false;
+let lukeTimer = 0;
+
+function renderLuke() {
+  refreshTricks(S);
+  checkLukeMilestones(S);
+  const mood = lukeMood(S);
+  const a = lukeAge(S);
+
+  const stage = $("#lukeStage");
+  if (stage) {
+    stage.innerHTML = lukeSvg(mood, 116);
+    stage.className = `luke-stage mood-${mood.id}`;
+  }
+  const meta = $("#lukeMeta");
+  if (meta) meta.textContent = `${LUKE_INFO.breed}・${a.text}・いっしょに${daysTogether(S)}日`;
+
+  const say = $("#lukeSay");
+  if (say && (say.dataset.mood !== mood.id || !say.textContent)) {
+    say.textContent = lukeLine(S, mood);
+    say.dataset.mood = mood.id;
+  }
+
+  // きもちが戻る時刻に、もう一度描き直す
+  const l = lukeState(S);
+  clearTimeout(lukeTimer);
+  if (l.moodUntil && l.moodUntil > Date.now()) {
+    lukeTimer = setTimeout(() => { const s = $("#lukeSay"); if (s) s.dataset.mood = ""; renderLuke(); },
+      l.moodUntil - Date.now() + 100);
+  }
+
+  const pat = $("#lukePat");
+  if (pat) pat.onclick = () => {
+    lukeReact(S, "pat");
+    const s = $("#lukeSay"); if (s) s.dataset.mood = "";
+    save(); renderLuke();
+    $("#lukeStage")?.classList.add("luke-patted");
+    setTimeout(() => $("#lukeStage")?.classList.remove("luke-patted"), 700);
+  };
+  const talk = $("#lukeTalk");
+  if (talk) talk.onclick = () => {
+    S.persona = "aibou"; save(); renderPersona(); go("study");
+    if (!S.chat.length) addMsg("ai", PERSONAS.aibou.intro);
+  };
+  const more = $("#lukeMore");
+  if (more) more.onclick = () => { lukeOpen = !lukeOpen; renderLukeDetail(); };
+
+  renderLukeDetail();
+  renderLukeMini();
+}
+
+function renderLukeDetail() {
+  const box = $("#lukeDetail");
+  if (!box) return;
+  const btn = $("#lukeMore");
+  if (btn) btn.textContent = lukeOpen ? "とじる" : "Lukeのこと";
+  box.hidden = !lukeOpen;
+  if (!lukeOpen) return;
+
+  const l = lukeState(S);
+  const a = lukeAge(S), st = lukeStage(S);
+  const tricks = lukeTricks(S);
+  const got = tricks.filter((t) => t.got).length;
+  const next = nextTrick(S);
+
+  box.innerHTML = `
+    <div class="lk-prof">
+      <p>${esc(LUKE_INFO.about)}</p>
+      <div class="lk-facts">
+        <div><span>いま</span><b>${esc(a.text)}</b></div>
+        <div><span>人でいうと</span><b>約${a.human}歳</b></div>
+        <div><span>育ち具合</span><b>${esc(st.name)}</b></div>
+        <div><span>いっしょに</span><b>${daysTogether(S)}日</b></div>
+      </div>
+      <p class="cs">${esc(st.note)}</p>
+      <label class="lk-bd">誕生日
+        <input type="date" id="lukeBd" value="${esc(l.bornAt)}">
+        <span class="cs">本当の誕生日を入れると、その日にお祝いします</span>
+      </label>
+    </div>
+
+    <h3 class="sub">覚えた芸 ${got}/${tricks.length}</h3>
+    <p class="cs">芸が増える条件は<b>「正解した数」ではありません。</b>
+      いい学び方ができたときに増えます。ごほうびではないので、ねらって取らなくて大丈夫です。</p>
+    <div class="lk-tricks">
+      ${tricks.map((t) => `<div class="lk-tk ${t.got ? "got" : ""}">
+        <span class="lk-tk-e">${t.emoji}</span>
+        <b>${esc(t.name)}</b>
+        <span class="lk-tk-how">${esc(t.how)}</span>
+        <span class="lk-tk-why">${esc(t.why)}</span>
+        ${t.got ? `<span class="lk-tk-ok">できる</span>` : ""}
+      </div>`).join("")}
+    </div>
+    ${next ? `<div class="note-box"><b>つぎに覚えられそうなのは「${esc(next.name)}」</b><br>
+      ${esc(next.how)}<br><span class="cs">${esc(next.why)}</span></div>` : ""}
+
+    <h3 class="sub">Lukeのきもち一覧</h3>
+    <p class="cs">Lukeが<b>そっぽを向くのは「近道をしようとしたとき」だけ</b>です。
+      できなかったことで、そっけなくなることはありません。</p>
+    <div class="lk-moods">
+      ${[["happy", "できたとき"], ["tilt", "まちがえたとき"], ["treasure", "自信あったのに間違えたとき"],
+         ["sulk", "「答え教えて」と言ったとき"], ["snuggle", "つらいとき"], ["lonely", "何日も会えないとき"]]
+        .map(([id, when]) => `<div class="lk-mo">
+          <div class="lk-mo-art">${lukeSvg(LUKE_MOODS[id], 62)}</div>
+          <b>${esc(LUKE_MOODS[id].name)}</b><span>${esc(when)}</span></div>`).join("")}
+    </div>
+
+    ${l.memories.length ? `<h3 class="sub">思い出</h3>
+      <div class="lk-mem">${l.memories.slice(-14).reverse().map((m) =>
+        `<div class="lk-mm"><span>${m.emoji}</span><b>${esc(m.text)}</b><i>${esc(m.at)}</i></div>`).join("")}</div>` : ""}
+    ${l.pats ? `<p class="cs" style="margin-top:10px">なでた回数:${l.pats}回</p>` : ""}`;
+
+  const bd = $("#lukeBd");
+  if (bd) bd.onchange = () => {
+    if (!bd.value) return;
+    l.bornAt = bd.value; save(); renderLuke();
+    toast(`Lukeの誕生日を ${bd.value} にしました`);
+  };
+}
+
+/** チャットのとなりにいる小さなLuke。ここが「見ていてくれる」感になる */
+function renderLukeMini() {
+  const box = $("#lukeMini");
+  if (!box) return;
+  const on = S.persona === "aibou" || (lukeState(S).moodUntil || 0) > Date.now();
+  box.hidden = !on;
+  if (!on) return;
+  const mood = lukeMood(S);
+  box.innerHTML = `<div class="lkm-art mood-${mood.id}">${lukeSvg(mood, 54)}</div>
+    <span class="lkm-say">${esc(lukeLine(S, mood))}</span>`;
 }
 
 /* ═══════════════ 英語 ═══════════════

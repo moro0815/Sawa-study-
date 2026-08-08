@@ -55,6 +55,25 @@
     <button class="dream-switch" id="dreamSwitch">今の志望を見る・変える</button>
   </div>
 
+  <div class="card luke-card" id="cardLuke">
+    <div class="luke-main">
+      <div class="luke-stage" id="lukeStage"></div>
+      <div class="luke-side">
+        <div class="luke-head-row">
+          <b class="luke-name">Luke</b>
+          <span class="luke-meta" id="lukeMeta"></span>
+        </div>
+        <p class="luke-say" id="lukeSay"></p>
+        <div class="luke-btns">
+          <button class="btn btn-sm" id="lukePat">なでる</button>
+          <button class="btn btn-sm ghost" id="lukeTalk">話す</button>
+          <button class="btn btn-sm ghost" id="lukeMore">Lukeのこと</button>
+        </div>
+      </div>
+    </div>
+    <div class="luke-detail" id="lukeDetail" hidden></div>
+  </div>
+
   <div class="card" id="cardHomework">
     <h2 class="ct">▶ 宿題 <span class="ct-note" id="hwNote"></span></h2>
     <div id="hwList"></div>
@@ -108,6 +127,7 @@
 <!-- ══════════ 学習(チャット) ══════════ -->
 <section id="s-study" class="screen">
   <div class="persona-bar" id="personaBar"></div>
+  <div class="luke-mini" id="lukeMini" hidden></div>
   <div class="timerbar" id="timerBar"><span id="timerText">学習時間 00:00</span><button id="timerBtn" class="timer-btn">▶ 計測開始</button></div>
   <div class="chat" id="chat"></div>
   <div class="conf-panel" id="confPanel" hidden>
@@ -637,6 +657,7 @@
 <script src="js/homework.js"></script>
 <script src="js/learning.js"></script>
 <script src="js/memory.js"></script>
+<script src="js/luke.js"></script>
 <script src="js/speech.js"></script>
 <script src="js/english.js"></script>
 <script src="js/careers.js"></script>
