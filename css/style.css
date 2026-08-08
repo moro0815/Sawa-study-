@@ -1046,10 +1046,10 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 
 /* ── Lukeの体 ── */
 .luke-svg { display: block; overflow: visible; }
-.lk-tail { transform-origin: 146px 152px; animation: lkWag var(--tail, 1s) ease-in-out infinite; }
+.lk-tail { transform-origin: 144px 158px; animation: lkWag var(--tail, 1s) ease-in-out infinite; }
 @keyframes lkWag { 0%, 100% { transform: rotate(-13deg); } 50% { transform: rotate(18deg); } }
-.lk-head { transform-origin: 100px 128px; transform: rotate(var(--tilt, 0deg)); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
-.lk-ear { transform-origin: 100px 72px; transform: rotate(var(--ear, 0deg)); transition: transform .45s ease; }
+.lk-head { transform-origin: 100px 136px; transform: rotate(var(--tilt, 0deg)); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
+.lk-ear { transform-origin: 100px 70px; transform: rotate(var(--ear, 0deg)); transition: transform .45s ease; }
 .lk-ear-r { transform: rotate(calc(var(--ear, 0deg) * -1)); }
 .lk-face { transform: translateX(var(--fx, 0px)); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
 .luke-svg.lk-bob { animation: lkBob .5s ease-in-out infinite; }
@@ -1115,4 +1115,27 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 @media (prefers-reduced-motion: reduce) {
   .lk-tail, .luke-svg.lk-bob, .lk-zzz, .luke-patted, .luke-say { animation: none !important; }
   .lk-head, .lk-ear, .lk-face { transition: none !important; }
+}
+
+/* ── Lukeの絵を差しかえたとき ── */
+.luke-photo { display: block; object-fit: contain;
+  transform: rotate(var(--tilt, 0deg)) scaleX(var(--flip, 1));
+  transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
+.luke-photo.lk-bob { animation: lkBob .5s ease-in-out infinite; }
+
+.lk-art-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 10px 0; }
+.lk-as { text-align: center; }
+.lk-as-drop { display: flex; align-items: center; justify-content: center;
+  aspect-ratio: 1; border: 2px dashed var(--line); border-radius: 12px; background: var(--bg);
+  cursor: pointer; overflow: hidden; }
+.lk-as.has .lk-as-drop { border-style: solid; border-color: #b9e4d0; background: #f4fbf7; }
+.lk-as-drop img { width: 100%; height: 100%; object-fit: contain; }
+.lk-as-plus { font-size: 22px; color: var(--ink3); }
+.lk-as b { display: block; font-size: 11.5px; margin-top: 5px; }
+.lk-as-hint { display: block; font-size: 9.5px; color: var(--ink3); line-height: 1.45; }
+.lk-as .linklike { font-size: 10px; margin-top: 2px; }
+
+@media (min-width: 900px) { .lk-art-grid { grid-template-columns: repeat(6, 1fr); } }
+@media (prefers-reduced-motion: reduce) {
+  .luke-photo { transition: none !important; animation: none !important; }
 }

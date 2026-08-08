@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v12";
+const APP_VERSION = "v13";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -113,11 +113,19 @@ function save() {
  * secrets:false のときは APIキーと合言葉を外す。
  * 端末の外(ファイル・サーバー)へ出すものに認証情報を混ぜないため。
  */
-function backupPayload(secrets = true) {
+/**
+ * 書き出す中身。
+ * @param secrets true で認証情報も含める(端末内のひかえ用)
+ * @param withArt true で Luke の絵も含める。
+ *   端末内のひかえには入れない — 12世代ぶん持つと容量を食いつぶすため。
+ *   ファイル書き出しとサーバー預けには入れる(機種変更で絵が消えないように)。
+ */
+function backupPayload(secrets = true, withArt = false) {
   const { chat, apiMessages, ...rest } = S;
-  if (secrets) return rest;
+  const art = withArt && lukeArtCount() ? { lukeArt: loadLukeArt() } : {};
+  if (secrets) return { ...rest, ...art };
   const { apiKeys, srvToken, ...safe } = rest;
-  return safe;
+  return { ...safe, ...art };
 }
 
 function loadBackups() {
@@ -167,7 +175,7 @@ function restoreBackup(i) {
 function backupFile() {
   return JSON.stringify({
     app: "sawa-navi", version: APP_VERSION, savedAt: new Date().toISOString(),
-    name: S.name, grade: S.grade, data: backupPayload(false),
+    name: S.name, grade: S.grade, data: backupPayload(false, true),
   }, null, 2);
 }
 
@@ -199,7 +207,9 @@ function applyBackupText(txt) {
   if (!data || typeof data !== "object" || !("mem" in data)) throw new Error("形式が違います");
   takeBackup("読み込み前");
   const keys = S.apiKeys, tok = S.srvToken;      // 認証情報は今のものを引き継ぐ
-  S = { ...defaults(), ...data, chat: [], apiMessages: [] };
+  const { lukeArt, ...rest } = data;             // 絵は別の場所にしまう
+  if (lukeArt && Object.keys(lukeArt).length) saveLukeArt(lukeArt);
+  S = { ...defaults(), ...rest, chat: [], apiMessages: [] };
   if (!Object.keys(S.apiKeys || {}).length) S.apiKeys = keys;
   if (!S.srvToken) S.srvToken = tok;
   save();
@@ -247,7 +257,7 @@ async function srvBackup(silent = true) {
   try {
     const body = JSON.stringify({
       app: "sawa-navi", version: APP_VERSION, savedAt: new Date().toISOString(),
-      name: S.name, grade: S.grade, data: backupPayload(false),
+      name: S.name, grade: S.grade, data: backupPayload(false, true),
     });
     await srvFetch("save", { body });
     S.srvLastAt = Date.now(); S.srvLastError = "";
@@ -2125,7 +2135,7 @@ function renderLuke() {
 
   const stage = $("#lukeStage");
   if (stage) {
-    stage.innerHTML = lukeSvg(mood, 116);
+    stage.innerHTML = lukeFigure(mood, 116);
     stage.className = `luke-stage mood-${mood.id}`;
   }
   const meta = $("#lukeMeta");
@@ -2210,6 +2220,9 @@ function renderLukeDetail() {
     ${next ? `<div class="note-box"><b>つぎに覚えられそうなのは「${esc(next.name)}」</b><br>
       ${esc(next.how)}<br><span class="cs">${esc(next.why)}</span></div>` : ""}
 
+    <h3 class="sub">Lukeの絵を変える</h3>
+    <div id="lukeArtBox"></div>
+
     <h3 class="sub">Lukeのきもち一覧</h3>
     <p class="cs">Lukeが<b>そっぽを向くのは「近道をしようとしたとき」だけ</b>です。
       できなかったことで、そっけなくなることはありません。</p>
@@ -2217,7 +2230,7 @@ function renderLukeDetail() {
       ${[["happy", "できたとき"], ["tilt", "まちがえたとき"], ["treasure", "自信あったのに間違えたとき"],
          ["sulk", "「答え教えて」と言ったとき"], ["snuggle", "つらいとき"], ["lonely", "何日も会えないとき"]]
         .map(([id, when]) => `<div class="lk-mo">
-          <div class="lk-mo-art">${lukeSvg(LUKE_MOODS[id], 62)}</div>
+          <div class="lk-mo-art">${lukeFigure(LUKE_MOODS[id], 62)}</div>
           <b>${esc(LUKE_MOODS[id].name)}</b><span>${esc(when)}</span></div>`).join("")}
     </div>
 
@@ -2225,6 +2238,8 @@ function renderLukeDetail() {
       <div class="lk-mem">${l.memories.slice(-14).reverse().map((m) =>
         `<div class="lk-mm"><span>${m.emoji}</span><b>${esc(m.text)}</b><i>${esc(m.at)}</i></div>`).join("")}</div>` : ""}
     ${l.pats ? `<p class="cs" style="margin-top:10px">なでた回数:${l.pats}回</p>` : ""}`;
+
+  renderLukeArt();
 
   const bd = $("#lukeBd");
   if (bd) bd.onchange = () => {
@@ -2242,7 +2257,7 @@ function renderLukeMini() {
   box.hidden = !on;
   if (!on) return;
   const mood = lukeMood(S);
-  box.innerHTML = `<div class="lkm-art mood-${mood.id}">${lukeSvg(mood, 54)}</div>
+  box.innerHTML = `<div class="lkm-art mood-${mood.id}">${lukeFigure(mood, 54)}</div>
     <span class="lkm-say">${esc(lukeLine(S, mood))}</span>`;
 }
 
@@ -2482,6 +2497,75 @@ function renderRwPanel(kind) {
       ${EXAM_ENGLISH.timing.map((t) => `<div class="qt"><p>${esc(t)}</p></div>`).join("")}`;
   }
   return "";
+}
+
+/** 用意された絵があればそれを、無ければSVGを描く */
+function lukeFigure(mood, size = 116) {
+  const url = lukeArtUrl(mood.id);
+  if (!url) return lukeSvg(mood, size);
+  const a = mood.art;
+  return `<img class="luke-photo${a.bob ? " lk-bob" : ""}" src="${url}" width="${size}" height="${size}"
+    alt="Luke(${esc(mood.name)})" style="--tilt:${a.tilt}deg${a.faceX ? ";--flip:-1" : ""}">`;
+}
+
+/* ── Lukeの絵を差しかえる ───────────────────────────────
+   手描きのSVGでは、生成したイラストの可愛さには勝てない。
+   だから「自分で用意した絵に置きかえられる」ようにしてある。 */
+
+function renderLukeArt() {
+  const box = $("#lukeArtBox");
+  if (!box) return;
+  const art = loadLukeArt();
+  const kb = Math.round(lukeArtBytes() / 1024);
+  box.innerHTML = `
+    <p class="cs">Lukeの絵を<b>自分で用意した画像に変えられます。</b>
+      まず「ふつう」の1枚だけ入れれば、ほかのきもちもその絵になります。
+      余裕があれば、きもちごとに別の絵を入れてください。</p>
+    <p class="cs">背景が透明なPNGだと、いちばんきれいに出ます。
+      画像は<b>この端末の中だけ</b>に保存され、どこにも送信されません。</p>
+    <div class="lk-art-grid">
+      ${LUKE_ART_SLOTS.map((sl) => `<div class="lk-as ${art[sl.id] ? "has" : ""}">
+        <label class="lk-as-drop">
+          ${art[sl.id] ? `<img src="${art[sl.id]}" alt="">` : `<span class="lk-as-plus">＋</span>`}
+          <input type="file" accept="image/*" data-art="${sl.id}" hidden>
+        </label>
+        <b>${esc(sl.name)}</b>
+        <span class="lk-as-hint">${esc(sl.hint)}</span>
+        ${art[sl.id] ? `<button class="linklike" data-artdel="${sl.id}">消す</button>` : ""}
+      </div>`).join("")}
+    </div>
+    <p class="cs">登録:${lukeArtCount()} / ${LUKE_ART_SLOTS.length}枚(合計 約${kb}KB)
+      ${lukeArtCount() ? `　<button class="linklike" id="lukeArtClear">ぜんぶ消して、もとの絵にもどす</button>` : ""}</p>`;
+
+  box.querySelectorAll("[data-art]").forEach((inp) => inp.onchange = async () => {
+    const f = inp.files?.[0];
+    if (!f) return;
+    if (!/^image\//.test(f.type)) return void toast("画像ファイルを選んでください");
+    try {
+      const url = await shrinkLukeImage(f);
+      const cur = loadLukeArt();
+      cur[inp.dataset.art] = url;
+      if (!saveLukeArt(cur)) {
+        toast("端末の空きが足りません。ほかの絵を減らしてください");
+        return;
+      }
+      toast("Lukeの絵を変えました");
+      renderLuke();
+    } catch (e) {
+      toast(e.message || "読み込めませんでした");
+    }
+  });
+  box.querySelectorAll("[data-artdel]").forEach((b) => b.onclick = () => {
+    const cur = loadLukeArt();
+    delete cur[b.dataset.artdel];
+    saveLukeArt(cur); renderLuke();
+  });
+  const clr = $("#lukeArtClear");
+  if (clr) clr.onclick = () => {
+    if (!confirm("登録した絵をすべて消して、もとの絵にもどしますか?")) return;
+    try { localStorage.removeItem(LUKE_ART_KEY); } catch {}
+    renderLuke();
+  };
 }
 
 /* ── 発音ドリル ─────────────────────────────────────────── */

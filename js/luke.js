@@ -157,6 +157,80 @@ const LUKE_TRICKS = [
     check: (S) => daysTogether(S) >= 100 },
 ];
 
+/* ── 絵の差しかえ ───────────────────────────────────────
+   ★手描きのSVGでは、生成したイラストの可愛さには勝てない。
+   なので【本人の用意した絵に置きかえられる】ようにした。
+   絵は端末の中(localStorage)に持つ。ネットには出さない。
+
+   6枚ぜんぶ用意しなくていい。「ふつう」の1枚だけ入れれば、
+   足りないきもちはそこへ落ちる。1枚も無ければSVGを描く。 */
+
+const LUKE_ART_KEY = "sawa-navi-luke-art";
+
+const LUKE_ART_SLOTS = [
+  { id: "base",  name: "ふつう",     hint: "いちばんよく出ます。まずこの1枚だけでOK" },
+  { id: "happy", name: "うれしい",   hint: "できたとき・ほめるとき・じまんするとき" },
+  { id: "think", name: "きょとん",   hint: "まちがえたとき・考えているとき・さみしいとき" },
+  { id: "wow",   name: "びっくり",   hint: "だいはっけんのとき・おめでとうのとき" },
+  { id: "sulk",  name: "ソッポ",     hint: "「答え教えて」と言われたとき" },
+  { id: "sleep", name: "おやすみ",   hint: "夜おそいとき・そばにいるとき" },
+];
+
+/** きもち → どの絵を使うか */
+const MOOD_TO_SLOT = {
+  normal: "base", excited: "happy", happy: "happy", proud: "happy",
+  tilt: "think", teach: "think", lonely: "think",
+  treasure: "wow", party: "wow",
+  sulk: "sulk", sleepy: "sleep", snuggle: "sleep",
+};
+
+function loadLukeArt() {
+  try { return JSON.parse(localStorage.getItem(LUKE_ART_KEY) || "{}") || {}; }
+  catch { return {}; }
+}
+function saveLukeArt(art) {
+  try { localStorage.setItem(LUKE_ART_KEY, JSON.stringify(art)); return true; }
+  catch { return false; }              // 容量オーバー。呼んだ側で知らせる
+}
+function lukeArtUrl(moodId) {
+  const art = loadLukeArt();
+  return art[MOOD_TO_SLOT[moodId] || "base"] || art.base || null;
+}
+function lukeArtCount() { return Object.keys(loadLukeArt()).length; }
+function lukeArtBytes() {
+  return Object.values(loadLukeArt()).reduce((n, v) => n + (v ? v.length : 0), 0);
+}
+
+/**
+ * 選ばれた絵を小さくして data URL にする。
+ * 透過を保つため webp を優先し、使えない端末では png に落とす。
+ */
+function shrinkLukeImage(file, max = 300) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("読み込めませんでした"));
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("画像として開けませんでした"));
+      img.onload = () => {
+        const r = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.round(img.width * r), h = Math.round(img.height * r);
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, w, h);
+        let out = "";
+        try { out = c.toDataURL("image/webp", 0.9); } catch { out = ""; }
+        if (!out.startsWith("data:image/webp")) out = c.toDataURL("image/png");
+        resolve(out);
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
 /* ── 状態 ───────────────────────────────────────────── */
 
 function lukeState(S) {
@@ -379,13 +453,13 @@ function streakDays(S) {
    きもちに応じて、耳・しっぽ・首のかたむき・目のかたちが変わる。 */
 
 const LUKE_EYES = {
-  open:    'M0 0 a5.2 5.2 0 1 0 .01 0Z',
-  wide:    'M0 -1 a6.3 6.3 0 1 0 .01 0Z',
-  arc:     'M-5 2 Q0 -5 5 2',
-  closed:  'M-5 0 Q0 3.4 5 0',
-  sad:     'M-4.6 2 Q0 -2 4.6 2',
-  sparkle: 'M0 -1.6 a6.6 6.6 0 1 0 .01 0Z',
-  away:    'M-3.4 0 a3.6 3.6 0 1 0 .01 0Z',
+  open:    'M0 0 a7.4 7.4 0 1 0 .01 0Z',
+  wide:    'M0 -1 a8.4 8.4 0 1 0 .01 0Z',
+  arc:     'M-7 3 Q0 -7 7 3',
+  closed:  'M-7 0 Q0 5 7 0',
+  sad:     'M-6.4 3 Q0 -3 6.4 3',
+  sparkle: 'M0 -1.6 a8.8 8.8 0 1 0 .01 0Z',
+  away:    'M-4 0 a5 5 0 1 0 .01 0Z',
 };
 
 /**
@@ -403,10 +477,10 @@ function lukeSvg(mood, size = 132) {
   const fx = a.faceX || 0;
 
   const eyeEl = (cx) => line
-    ? `<path d="${eye}" transform="translate(${cx} 88)" fill="none" stroke="#4a2c17" stroke-width="2.6" stroke-linecap="round"/>`
-    : `<g transform="translate(${cx} 88)"><path d="${eye}" fill="#4a2c17"/>
-         <circle cx="-1.7" cy="-2" r="1.9" fill="#fff" opacity=".97"/>
-         ${a.eye === "sparkle" ? `<circle cx="2" cy="2" r="1" fill="#fff" opacity=".85"/>` : ""}</g>`;
+    ? `<path d="${eye}" transform="translate(${cx} 90)" fill="none" stroke="#4a2c17" stroke-width="3.2" stroke-linecap="round"/>`
+    : `<g transform="translate(${cx} 90)"><path d="${eye}" fill="#31200f"/>
+         <circle cx="-2.4" cy="-2.8" r="2.7" fill="#fff"/>
+         <circle cx="2.2" cy="2.4" r="1.3" fill="#fff" opacity=".8"/></g>`;
 
   const puff = (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}"/>`;
 
@@ -420,53 +494,55 @@ function lukeSvg(mood, size = 132) {
 
   <!-- しっぽ(くるん)。からだより先に描いて、後ろにする -->
   <g class="lk-tail">
-    <path d="M146 152 q28 4 32 -18 q3 -19 -13 -21 q-12 -1 -12 11 q0 9 9 9"
+    <path d="M144 158 q28 4 32 -18 q3 -19 -13 -21 q-12 -1 -12 11 q0 9 9 9"
       fill="none" stroke="#d0904f" stroke-width="17" stroke-linecap="round"/>
-    <path d="M146 152 q28 4 32 -18 q3 -19 -13 -21 q-12 -1 -12 11 q0 9 9 9"
+    <path d="M144 158 q28 4 32 -18 q3 -19 -13 -21 q-12 -1 -12 11 q0 9 9 9"
       fill="none" stroke="url(#lkF)" stroke-width="11" stroke-linecap="round"/>
   </g>
 
   <!-- からだ(おすわり) -->
   <g fill="url(#lkF)">
-    ${puff(100, 158, 37)}${puff(73, 165, 23)}${puff(127, 165, 23)}${puff(100, 136, 29)}
+    ${puff(100, 163, 33)}${puff(76, 169, 21)}${puff(124, 169, 21)}${puff(100, 143, 26)}
   </g>
-  <g fill="#f4c894">${puff(83, 183, 13)}${puff(117, 183, 13)}</g>
+  <g fill="#f4c894">${puff(85, 185, 12)}${puff(115, 185, 12)}</g>
 
   <!-- 首輪(ブルー)と、ゴールドのLチャーム -->
-  <path d="M74 130 q26 13 52 0" fill="none" stroke="#2f7bad" stroke-width="10" stroke-linecap="round"/>
-  <path d="M74 130 q26 13 52 0" fill="none" stroke="#4a97c8" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="100" cy="148" r="7.5" fill="#e0a82e"/>
-  <circle cx="100" cy="148" r="7.5" fill="none" stroke="#c28c1c" stroke-width="1.2"/>
-  <text x="100" y="152" font-size="9" font-weight="700" text-anchor="middle" fill="#8a6111"
+  <path d="M76 138 q24 12 48 0" fill="none" stroke="#2f7bad" stroke-width="10" stroke-linecap="round"/>
+  <path d="M76 138 q24 12 48 0" fill="none" stroke="#4a97c8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="100" cy="155" r="7.5" fill="#e0a82e"/>
+  <circle cx="100" cy="155" r="7.5" fill="none" stroke="#c28c1c" stroke-width="1.2"/>
+  <text x="100" y="159" font-size="9" font-weight="700" text-anchor="middle" fill="#8a6111"
     font-family="system-ui, sans-serif">L</text>
 
   <!-- あたま(耳ごとかたむく) -->
   <g class="lk-head" style="--tilt:${a.tilt}deg">
     <!-- たれ耳。頭より外・下に出して、少し濃い色にする -->
     <g class="lk-ear lk-ear-l" style="--ear:${a.ear}deg" fill="#d2934f">
-      ${puff(47, 93, 20)}${puff(41, 116, 17)}${puff(47, 134, 12)}
+      ${puff(43, 96, 22)}${puff(37, 121, 18)}${puff(44, 140, 13)}
     </g>
     <g class="lk-ear lk-ear-r" style="--ear:${a.ear}deg" fill="#d2934f">
-      ${puff(153, 93, 20)}${puff(159, 116, 17)}${puff(153, 134, 12)}
+      ${puff(157, 96, 22)}${puff(163, 121, 18)}${puff(156, 140, 13)}
     </g>
     <!-- 頭のふわふわ -->
     <g fill="url(#lkF)">
-      ${puff(100, 84, 42)}${puff(69, 62, 20)}${puff(131, 62, 20)}${puff(100, 45, 22)}
-      ${puff(80, 50, 15)}${puff(120, 50, 15)}${puff(64, 94, 16)}${puff(136, 94, 16)}
+      ${puff(100, 86, 46)}${puff(66, 62, 22)}${puff(134, 62, 22)}${puff(100, 43, 24)}
+      ${puff(78, 47, 17)}${puff(122, 47, 17)}${puff(60, 96, 18)}${puff(140, 96, 18)}
+      ${puff(100, 128, 26)}
     </g>
     <!-- 顔(ソッポのときは横にずれる) -->
     <g class="lk-face" style="--fx:${fx}px">
-      ${eyeEl(85)}${eyeEl(115)}
-      <ellipse cx="100" cy="110" rx="19" ry="14.5" fill="#fbe0bd"/>
-      <path d="M92.5 104 q7.5 -6 15 0 q0 7.5 -7.5 8.6 q-7.5 -1.1 -7.5 -8.6Z" fill="#4a2c17"/>
-      <path d="M100 113 q0 5 -6 5 M100 113 q0 5 6 5" fill="none" stroke="#4a2c17"
-        stroke-width="2.2" stroke-linecap="round"/>
-      ${glad ? `<path d="M89 117 q11 13 22 0 q-11 5 -22 0Z" fill="#4a2c17"/>
-                <ellipse cx="100" cy="122" rx="6" ry="5.4" fill="#f4a0a8"/>
-                <path d="M100 118 v7" stroke="#e0848f" stroke-width="1.2" stroke-linecap="round"/>
-                <ellipse cx="67" cy="103" rx="8" ry="5" fill="#f4a0a8" opacity=".55"/>
-                <ellipse cx="133" cy="103" rx="8" ry="5" fill="#f4a0a8" opacity=".55"/>` : ""}
-      ${a.eye === "sad" ? `<path d="M93 121 q7 -5 14 0" fill="none" stroke="#4a2c17" stroke-width="2" stroke-linecap="round"/>` : ""}
+      ${eyeEl(81)}${eyeEl(119)}
+      <ellipse cx="100" cy="114" rx="21" ry="15.5" fill="#fbe4c6"/>
+      <path d="M91.5 107 q8.5 -6.5 17 0 q0 8 -8.5 9.4 q-8.5 -1.4 -8.5 -9.4Z" fill="#31200f"/>
+      <ellipse cx="96" cy="109" rx="2.6" ry="1.6" fill="#fff" opacity=".35"/>
+      <path d="M100 117 q0 5.5 -6.5 5.5 M100 117 q0 5.5 6.5 5.5" fill="none" stroke="#31200f"
+        stroke-width="2.4" stroke-linecap="round"/>
+      ${glad ? `<path d="M88 121 q12 14 24 0 q-12 6 -24 0Z" fill="#31200f"/>
+                <ellipse cx="100" cy="126" rx="6.5" ry="5.8" fill="#f4a0a8"/>
+                <path d="M100 122 v7.5" stroke="#e0848f" stroke-width="1.3" stroke-linecap="round"/>` : ""}
+      <ellipse cx="63" cy="106" rx="9" ry="5.6" fill="#f4a0a8" opacity="${glad ? ".6" : ".38"}"/>
+      <ellipse cx="137" cy="106" rx="9" ry="5.6" fill="#f4a0a8" opacity="${glad ? ".6" : ".38"}"/>
+      ${a.eye === "sad" ? `<path d="M93 125 q7 -5 14 0" fill="none" stroke="#4a2c17" stroke-width="2" stroke-linecap="round"/>` : ""}
     </g>
   </g>
 
