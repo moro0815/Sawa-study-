@@ -177,6 +177,66 @@
   </div>
 </section>
 
+<!-- ══════════ 英語 ══════════ -->
+<section id="s-eng" class="screen">
+  <div class="card eng-hero">
+    <h2 class="ct">▶ 英語は、この順で積みます</h2>
+    <p class="cs">「会話ができれば受験英語もできるようになる」——<b>これは研究の上では成り立ちません。</b>
+      読解の精度と英作文の正確さは、別に作らないと身につきません(明示的な文法指導は効果量 d≈0.96)。
+      <b>ただし順番には意味があります。</b>音と会話を先に作ると、そのあとの読み書きの伸び方が変わります。</p>
+    <div id="engLayers" class="lay-grid"></div>
+    <div class="note-box" id="engWhy">
+      <b>なぜ「発音から」なのか — 発音のためではありません</b><br>
+      新しい単語は、まず<b>音のかたち</b>として頭に保持されてから、長期記憶に移ります。
+      音として区別できない語は、この入口で落ちます。音韻的短期記憶は語彙習得の最も強い予測因子のひとつです
+      (Baddeley, Gathercole &amp; Papagno 1998)。<br>
+      つまり<b>発音練習は、単語を覚えるための練習</b>でもあります。
+      さらに共通テストはリスニングが100点 — <b>配点の半分</b>が音です。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 音の聞き分け <span class="ct-note">日本語にない区別だけ</span></h2>
+    <p class="cs">全部の音をやる必要はありません。問題になるのは<b>日本語に「無い区別」</b>だけです。
+      まず聞き分けから始めます。<b>聞き分けの訓練は、発音そのものも良くする</b>ことが確認されています
+      (Bradlow et al. 1997 — 日本語話者のR/L訓練)。声はわざと毎回変えています。</p>
+    <div id="pronList" class="pron-list"></div>
+    <div id="pronDrill" class="pron-drill" hidden></div>
+    <p class="cs" id="speechNote"></p>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 英語で話してみる</h2>
+    <p class="cs">話している最中は<b>直しません</b>。直されると話す量そのものが減るからです。
+      直すのは会話が終わったあと、<b>2〜3点だけ</b>。まちがえていい時間として設計しています。</p>
+    <div id="convBox" class="conv-grid"></div>
+    <div class="note-box" id="fluencyBox"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 覚えた単語</h2>
+    <p class="cs">単語帳を丸ごと積むのではなく、<b>実際に出会った語</b>をその場で登録して、忘れかけたころに出します。
+      文脈ごとのほうが確実に残るからです。</p>
+    <div id="wordBox"></div>
+    <h3 class="sub">何語知っていれば読めるのか</h3>
+    <div id="coverBox" class="cov-list"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 日本語話者がひっかかる文法 <span class="ct-note">ここが最短距離</span></h2>
+    <p class="cs">冠詞・可算不可算・自動詞他動詞・時制。これらは<b>日本語に無い区別</b>なので、
+      放っておいても直りません。英語圏向けの教材にも載っていません。<b>ここを名指しで潰します。</b></p>
+    <div id="trapBox"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 読む・書く・受験</h2>
+    <p class="cs">会話とは別に、ここは<b>技術として教わらないと身につきません</b>。</p>
+    <div class="eng-tabs" id="rwTabs"></div>
+    <div id="rwBox"></div>
+  </div>
+</section>
+
 <!-- ══════════ 弱点 ══════════ -->
 <section id="s-weak" class="screen">
   <div class="card">
@@ -562,6 +622,7 @@
   <button class="nb active" data-go="home"><span>🏠</span>ホーム</button>
   <button class="nb" data-go="study"><span>💬</span>学習</button>
   <button class="nb" data-go="learn"><span>💡</span>学び方</button>
+  <button class="nb" data-go="eng"><span>🌍</span>英語</button>
   <button class="nb" data-go="weak"><span>🎯</span>弱点</button>
   <button class="nb" data-go="grade"><span>📊</span>成績</button>
   <button class="nb" data-go="plan"><span>🎓</span>受験</button>
@@ -576,6 +637,8 @@
 <script src="js/homework.js"></script>
 <script src="js/learning.js"></script>
 <script src="js/memory.js"></script>
+<script src="js/speech.js"></script>
+<script src="js/english.js"></script>
 <script src="js/careers.js"></script>
 <script src="js/exam.js"></script>
 <script src="js/admission.js"></script>

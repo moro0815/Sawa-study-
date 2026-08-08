@@ -352,6 +352,78 @@ const TOOLS = [
       required: ["homework_id", "item_n", "status"],
     },
   },
+
+  /* ── 英語 ───────────────────────────────────────────── */
+  {
+    name: "get_english_status",
+    description:
+      "英語の今の状況を取得する。いまどの層(音/話す/読む/書く/受験)に重心があるか、" +
+      "苦手な音、日本語話者として狙って直すべき文法、今日出すべき単語を返す。" +
+      "英語の話をするときは【必ず】最初にこれを呼ぶこと。",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_english_material",
+    description:
+      "英語の指導用データを取り出す。発音の口の形とミニマルペア、日本語話者がやる文法ミスの一覧、" +
+      "読解のつなぎ言葉と設問タイプ、英作文の型、不規則動詞、接辞と語根、和製英語、多義語、会話のお題。" +
+      "推測で教えず、必ずこれを呼んで正確なデータを使うこと。",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          description: "取り出す種類。phoneme=発音 grammar=文法の罠 reading=読解 writing=英作文 exam=受験 irregular=不規則動詞 parts=接辞と語根 trap=和製英語 poly=多義語 conversation=会話のお題",
+        },
+        id: { type: "string", description: "絞り込みたいID(任意)。例:phoneme なら rl / th / vowel、grammar なら article / perfect" },
+      },
+      required: ["kind"],
+    },
+  },
+  {
+    name: "add_english_word",
+    description:
+      "沙和さんが出会った新しい単語を登録する。登録すると忘れかけたころに自動で復習に出る。" +
+      "単語だけを裸で登録しない — 必ず例文をつけること。文脈ごとのほうが定着する。",
+    input_schema: {
+      type: "object",
+      properties: {
+        word:    { type: "string", description: "単語または熟語" },
+        meaning: { type: "string", description: "日本語の意味" },
+        example: { type: "string", description: "その語を使った短い英文。沙和さんが読める難しさで" },
+        note:    { type: "string", description: "発音の注意や、日本語話者がひっかかる点(任意)" },
+      },
+      required: ["word", "meaning", "example"],
+    },
+  },
+  {
+    name: "record_english_word",
+    description: "登録済みの単語をテストした結果を記録する。復習の間隔が自動で調整される。",
+    input_schema: {
+      type: "object",
+      properties: {
+        word:       { type: "string", description: "単語" },
+        confidence: { type: "integer", enum: [1, 2, 3], description: "本人の確信度。3=自信ある 2=たぶん 1=わからない" },
+        grade:      { type: "integer", enum: [1, 2, 3, 4], description: "出来ばえ。1=全くできず 4=余裕" },
+      },
+      required: ["word", "confidence", "grade"],
+    },
+  },
+  {
+    name: "note_english_conversation",
+    description:
+      "英会話をひと区切りしたときに呼ぶ。会話の回数は、次にどの層へ重心を移すかの判断に使う。" +
+      "会話の【あと】に、まとめて2〜3点だけ直したことを feedback に書く。",
+    input_schema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: "話したお題" },
+        turns: { type: "integer", description: "沙和さんが英語で発話した回数" },
+        feedback: { type: "string", description: "会話のあとに伝えた要点(2〜3点まで)" },
+      },
+      required: ["topic"],
+    },
+  },
 ];
 
 /* システムプロンプトの組み立て */
@@ -381,12 +453,16 @@ ${past.length ? `- 過去に持っていた夢:${past.join("、")}(変わった�
 ${PEDAGOGY_RULES}
 ${HOMEWORK_RULES}
 ${profile.learningBlock || ""}
+${profile.englishBlock || ""}
 
 # 現在の学習状況
 ${statusSummary}
 
 # 宿題の状況
 ${profile.homeworkStatus || "- まだ宿題の記録はありません。"}
+
+# 英語の状況
+${profile.englishStatus || "- まだ英語の記録はありません。"}
 
 # ツールの使い方
 - 問題を出して答えが返ってきたら【必ず】 record_answer を呼ぶ(確信度を聞いてから)
@@ -399,6 +475,10 @@ ${profile.homeworkStatus || "- まだ宿題の記録はありません。"}
 - やりとりの最後に【必ず】 note_activity で今回の型を記録する
 - 沙和さんが自分から始めた/自分から「なぜ」と聞いたときは note_engagement を呼ぶ
 - 「どう勉強したらいい?」と聞かれたら get_learning_style を呼んでから答える
+- 英語の話になったら【必ず】 get_english_status を先に呼ぶ
+- 発音・文法・読解・英作文を教えるときは get_english_material で正確なデータを取る(推測で教えない)
+- 新しい単語が出たら add_english_word で登録し、テストしたら record_english_word
+- 英会話がひと区切りついたら note_english_conversation
 
 # 写真・スキャンを受け取ったとき
 1. まず読み取れた内容を短く確認する(「数学ワークのp.42、一次関数の問題が5問だね」)

@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v10";
+const APP_VERSION = "v11";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -40,6 +40,7 @@ const defaults = () => ({
   actLog: [],            // 使った活動の型の履歴(飽きの防止)
   quizDone: {},          // 勉強法クイズの回答
   apiLog: [],            // 直近のAPI呼び出し記録
+  eng: {},               // 英語 {pron, words, conv, log} — 発音の記録・単語のFSRS・会話回数
   homework: [],          // [{id, source, title, items, due, ...}] 学校ぶん＋AIぶん
   sessions: [],          // [{date, answered, correct, minutes}]
   career: DEFAULT_CAREER,      // 今の志望(変数。固定しない)
@@ -618,6 +619,95 @@ async function runTool(name, input) {
       return { ok: true, total_goals: S.goals.length };
     }
 
+    /* ── 英語 ───────────────────────────────────────── */
+
+    case "get_english_status": {
+      const L = englishLayer(S);
+      const w = wordStats(S);
+      return {
+        layer: { n: L.n, name: L.name, goal: L.goal, why: L.why, doing: L.doing },
+        all_layers: ENG_LAYERS.map((x) => `${x.n}.${x.name}`),
+        concepts: { learned: L.learned, total: L.total },
+        words: w,
+        conversations: L.conv,
+        weak_sounds: weakPhonemes(S, 3).map((p) => ({
+          id: p.id, name: p.name, japanese_problem: p.jp,
+          accuracy: p.acc == null ? null : Math.round(p.acc * 100), tries: p.n, tip: p.tip,
+        })),
+        grammar_targets: weakGrammarTraps(S, 4).map((t) => ({
+          id: t.id, name: t.name, wrong: t.ng, right: t.ok, why_japanese: t.why, rule: t.rule,
+        })),
+        due_words: dueWords(S, 8),
+        instruction:
+          "会話中は文法を直さないでください。直すのは会話が終わったあと、2〜3点だけです。" +
+          "発音はカタカナで書かず、口と舌の形で説明してください。" +
+          (GRADES.indexOf(S.grade || "中1") <= 2 ? "中学生なので、受験の話はしないでください。" : ""),
+      };
+    }
+
+    case "get_english_material": {
+      const id = input.id;
+      const pick = (arr, key) => (id ? arr.filter((x) => x[key] === id) : arr);
+      switch (input.kind) {
+        case "phoneme":
+          return { items: pick(PHONEMES, "id").map((p) => ({
+            id: p.id, name: p.name, japanese_problem: p.jp, why: p.why,
+            mouth: p.how, minimal_pairs: p.pairs, words: p.words || null, phrases: p.phrases || null, tip: p.tip,
+          })), note: "カタカナで書かないこと。口・舌・歯のどこが当たるかで説明してください。" };
+        case "grammar":
+          return { items: pick(GRAMMAR_TRAPS, "id"),
+            note: "「なぜ日本語だとそうなるのか」を必ずセットで説明してください。理由が分かると同じ間違いが減ります。" };
+        case "reading":
+          return { discourse_markers: DISCOURSE, question_types: QUESTION_TYPES, rules: READING_RULES,
+            note: "訳させないこと。名詞の後ろの修飾で区切らせることが最重要です。" };
+        case "writing":
+          return { steps: WRITING_STEPS, essay_frame: ESSAY_FRAME,
+            note: "いきなり英訳させず、必ず和文和訳から入ってください。" };
+        case "exam":
+          return GRADES.indexOf(S.grade || "中1") <= 2
+            ? { blocked: true, note: "沙和さんは中学生です。受験の話は出さないでください。代わりに「今できるようになること」を見せてください。" }
+            : { ...EXAM_ENGLISH };
+        case "irregular":  return { groups: IRREGULAR, note: "型でまとめると覚える量が減ります。ひっかけの lie/lay と rise/raise は必ず区別させてください。" };
+        case "parts":      return { items: WORD_PARTS, note: "知らない語が出たら、まず接辞と語根で崩せないか試させてください。" };
+        case "trap":       return { items: TRAP_WORDS, note: "和製英語は、そのまま言うと通じないか、別の意味になります。" };
+        case "poly":       return { items: POLYSEMY, note: "知っている意味で読むと外れる語です。長文で出たら文脈から選ばせてください。" };
+        case "conversation":
+          return { topics: CONV_TOPICS, fluency_432: FLUENCY_432,
+            note: "会話中は直さないでください。短い返事でも内容で受けてください。" };
+        case "vocab":
+          return { coverage: COVERAGE, coverage_note: COVERAGE_NOTE, stats: wordStats(S) };
+        default:
+          return { error: "unknown kind", valid: ["phoneme","grammar","reading","writing","exam","irregular","parts","trap","poly","conversation","vocab"] };
+      }
+    }
+
+    case "add_english_word": {
+      const w = addWord(S, input.word, input.meaning, input.example, input.note);
+      if (!w) return { error: "word is empty" };
+      save(); renderEnglish();
+      return { added: w.word, meaning: w.meaning, total_words: wordStats(S).total,
+               note: "忘れかけたころに自動で復習に出ます。裸で覚えさせず、例文の中で使ってください。" };
+    }
+
+    case "record_english_word": {
+      const r = reviewWord(S, input.word, input.grade, input.confidence);
+      if (!r) return { error: "unknown word", hint: "先に add_english_word で登録してください" };
+      save(); renderEnglish();
+      const q = QUADRANTS[r.quadrant];
+      return { word: input.word, quadrant: r.quadrant, quadrant_name: q.name,
+               next_review_in_days: Math.round(r.interval * 10) / 10,
+               instruction: r.quadrant === "hi-wrong"
+                 ? "自信ありで間違えました。訂正したあと、その語を使った短い英文をもう1つ作らせてください。"
+                 : "そのまま続けてください。" };
+    }
+
+    case "note_english_conversation": {
+      const n = noteConversation(S, input.topic, input.turns, englishLayer(S).n);
+      save(); renderEnglish();
+      return { total_conversations: n, feedback_recorded: input.feedback || "",
+               instruction: "直すのは2〜3点までにしてください。多く言うほど、次に話す量が減ります。" };
+    }
+
     default:
       return { error: "unknown tool: " + name };
   }
@@ -660,6 +750,11 @@ function toolLog(name) {
     get_study_queue: "📚 出題候補を選定中(交互練習)…",
     get_status: "📊 学習状況を確認中…",
     set_goal: "🎯 目標を記録中…",
+    get_english_status: "🌍 英語の状況を確認中…",
+    get_english_material: "📗 英語の教材データを参照中…",
+    add_english_word: "🆕 単語を登録中…",
+    record_english_word: "📝 単語の結果を記録中…",
+    note_english_conversation: "💬 英会話を記録中…",
   };
   const el = document.createElement("div");
   el.className = "tool-log"; el.textContent = map[name] || name;
@@ -718,6 +813,8 @@ async function send(override) {
         pastDreams: (S.dreamHistory || []).map((d) => CAREER_MAP[d.career]?.name).filter(Boolean),
         homeworkStatus: homeworkStatusText(S.homework, S.dailyMinutes),
         learningBlock: learningPromptBlock(S),
+        englishBlock: englishPromptBlock(S),
+        englishStatus: englishStatusText(S),
       }, statusSummary()),
       messages: S.apiMessages,
       tools: TOOLS,
@@ -847,6 +944,7 @@ function fileToBase64(file) {
 function renderAll() {
   renderHomework();
   renderLearn();
+  renderEnglish();
   renderApiPanel();
   applyStage();
   renderTop(); renderHome(); renderJourney(); renderLetters(); renderThemes();
@@ -1957,6 +2055,351 @@ function renderLearn() {
       </div>`;
     }).join("");
   }
+}
+
+/* ═══════════════ 英語 ═══════════════
+   発音は「聞き分け」を中心に置いた。音声認識は使えない端末があるが、
+   読み上げ(TTS)はどの端末でも動く。中心を読み上げ側に置けば、
+   どの端末でも発音練習が成立する。 */
+
+let pronOpen = null;      // いま開いている音のID
+let rwTab = "reading";    // 読む/書く/受験 の切替
+
+function renderEnglish() {
+  const L = englishLayer(S);
+
+  /* 5つの層 */
+  const lg = $("#engLayers");
+  if (lg) {
+    lg.innerHTML = ENG_LAYERS.map((x) => `<div class="lay ${x.n === L.n ? "now" : x.n < L.n ? "past" : ""}">
+      <div class="lay-h"><span class="lay-e">${x.emoji}</span><b>${x.n}. ${esc(x.name)}</b>
+        ${x.n === L.n ? `<span class="lay-tag">いまここ</span>` : ""}</div>
+      <p class="lay-g">${esc(x.goal)}</p>
+      <p class="lay-w">${esc(x.why)}</p>
+      <p class="lay-d">${esc(x.doing)}</p>
+    </div>`).join("");
+  }
+
+  /* 音の一覧 */
+  const pl = $("#pronList");
+  if (pl) {
+    pl.innerHTML = PHONEMES.map((p) => {
+      const acc = pronAccuracy(S, p.id);
+      const st = pronState(S, p.id);
+      return `<button class="pron ${pronOpen === p.id ? "open" : ""}" data-ph="${p.id}">
+        <span class="pron-l"><b>${esc(p.name)}</b><span class="pron-jp">${esc(p.jp)}</span></span>
+        <span class="pron-acc ${acc == null ? "" : acc >= 0.8 ? "ok" : acc >= 0.6 ? "mid" : "ng"}">${
+          acc == null ? "まだ" : Math.round(acc * 100) + "%"}</span>
+        <span class="pron-n">${st.heard + st.said}回</span>
+      </button>`;
+    }).join("");
+    pl.querySelectorAll("[data-ph]").forEach((b) => b.onclick = () => {
+      const opening = pronOpen !== b.dataset.ph;
+      pronOpen = opening ? b.dataset.ph : null;
+      renderEnglish();
+      // 開いた練習パネルは画面の外にあることが多い。そこまで送る
+      if (opening) $("#pronDrill")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  /* 開いている音の練習パネル */
+  const pd = $("#pronDrill");
+  if (pd) {
+    if (!pronOpen) { pd.hidden = true; pd.innerHTML = ""; }
+    else {
+      const p = PHONEME_MAP[pronOpen];
+      pd.hidden = false;
+      pd.innerHTML = `
+        <h3 class="pd-t">${esc(p.name)}</h3>
+        <p class="pd-why">${esc(p.why)}</p>
+        <div class="pd-how">${Object.entries(p.how).map(([k, v]) =>
+          `<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("")}</div>
+        <p class="pd-tip">💡 ${esc(p.tip)}</p>
+        ${p.words ? `<div class="pd-words">${p.words.map((w) =>
+          `<button class="pd-w" data-say="${esc(w.w)}">🔊 ${esc(w.w)}<span>${esc(w.s)}</span></button>`).join("")}</div>` : ""}
+        ${p.phrases ? `<div class="pd-words">${p.phrases.map((s) =>
+          `<button class="pd-w wide" data-say="${esc(s)}">🔊 ${esc(s)}</button>`).join("")}</div>` : ""}
+        ${p.noAudioB
+          ? `<p class="cs">ここは「日本語ふうの言い方」との比較なので、聞き分け問題は作れません。英語の側だけを読み上げます。</p>
+             <div class="pd-words">${p.pairs.map(([a]) => `<button class="pd-w" data-say="${esc(a)}">🔊 ${esc(a)}</button>`).join("")}</div>
+             <div class="pd-act"><button class="btn btn-sm" id="pdSay">🎤 言ってみる</button></div>`
+          : p.pairs?.length
+          ? `<div class="pd-act">
+               <button class="btn btn-sm" id="pdListen">👂 聞き分けをやる</button>
+               <button class="btn btn-sm ghost" id="pdSay">🎤 言ってみる</button>
+             </div>` : ""}
+        <div id="pdArea"></div>`;
+
+      pd.querySelectorAll("[data-say]").forEach((b) => b.onclick = () => speakSafe(b.dataset.say));
+      const bl = $("#pdListen"); if (bl) bl.onclick = () => startListenDrill(p);
+      const bs = $("#pdSay");    if (bs) bs.onclick = () => startSayDrill(p);
+    }
+  }
+
+  /* この端末でできること・できないこと */
+  const sn = $("#speechNote");
+  if (sn) {
+    sn.textContent = [
+      ttsSupported() ? "🔊 読み上げ:使えます" : "🔊 読み上げ:この端末では使えません",
+      canRecord() ? "🎙 録音して聞き比べ:使えます" : "🎙 録音:この端末では使えません",
+      canRecognize() ? "🎤 発音の自動判定:使えます" : "🎤 発音の自動判定:この端末では使えません(聞き比べで練習できます)",
+    ].join(" / ");
+  }
+
+  /* 会話 */
+  const cb = $("#convBox");
+  if (cb) {
+    const lv = Math.min(4, Math.max(1, GRADES.indexOf(S.grade || "中1") + 1));
+    cb.innerHTML = CONV_TOPICS.map((t) => `<button class="cv ${t.lv > lv ? "hard" : ""}" data-cv="${t.id}">
+      <span class="cv-e">${t.emoji}</span><b>${esc(t.name)}</b>
+      <span class="cv-q">${esc(t.q[0])}</span>
+      ${t.lv > lv ? `<span class="cv-tag">むずかしめ</span>` : ""}</button>`).join("");
+    cb.querySelectorAll("[data-cv]").forEach((b) => b.onclick = () => {
+      const t = CONV_TOPICS.find((x) => x.id === b.dataset.cv);
+      S.persona = "aibou"; renderPersona(); go("study");
+      send(`英語で話す練習をしたいです。お題は「${t.name}」。まず ${t.q[0]} から聞いてください。`
+         + `話している間は直さないで、終わってから2〜3点だけ教えてください。`);
+    });
+  }
+  const fb = $("#fluencyBox");
+  if (fb) fb.innerHTML = `<b>${esc(FLUENCY_432.name)}</b><br>${FLUENCY_432.how.map(esc).join(" → ")}<br>
+    <span class="cs">${esc(FLUENCY_432.why)}</span>`;
+
+  /* 単語 */
+  const wb = $("#wordBox");
+  if (wb) {
+    const st = wordStats(S);
+    const due = dueWords(S, 8);
+    const recent = Object.values(engState(S).words).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0)).slice(0, 12);
+    wb.innerHTML = `
+      <div class="wd-sum"><b>${st.total}語</b>登録 / <b>${st.known}語</b>が定着
+        ${st.total ? "" : `<span class="cs">— 会話や長文で出会った語が、ここにたまっていきます</span>`}</div>
+      ${due.length ? `<div class="wd-due"><b>今日ぶんの復習(${due.length}語)</b>
+        <div class="wd-chips">${due.map((d) => `<span class="wd-chip">${esc(d.word)}</span>`).join("")}</div>
+        <button class="btn btn-sm" id="wdStart">この単語をテストしてもらう</button></div>` : ""}
+      ${recent.length ? `<div class="wd-list">${recent.map((w) => `<div class="wd">
+        <button class="wd-say" data-say="${esc(w.word)}">🔊</button>
+        <b>${esc(w.word)}</b><span class="wd-m">${esc(w.meaning || "")}</span>
+        <span class="wd-bar"><i style="width:${Math.round((w.mastery || 0) * 100)}%"></i></span>
+        ${w.example ? `<span class="wd-ex">${esc(w.example)}</span>` : ""}
+      </div>`).join("")}</div>` : ""}`;
+    wb.querySelectorAll("[data-say]").forEach((b) => b.onclick = () => speakSafe(b.dataset.say));
+    const ws = $("#wdStart");
+    if (ws) ws.onclick = () => { S.persona = "sensei"; renderPersona(); go("study");
+      send("今日ぶんの英単語をテストしてください。1語ずつ、確信度を聞いてから進めてください。"); };
+  }
+
+  const cvb = $("#coverBox");
+  if (cvb) {
+    const known = wordStats(S).known;
+    cvb.innerHTML = COVERAGE.map((c) => `<div class="cov ${known >= c.words ? "done" : ""}">
+      <b>${c.words.toLocaleString()}語</b><span class="cov-c">${c.cover}</span>
+      <span class="cov-k">${esc(c.can)}</span></div>`).join("")
+      + `<p class="cs" style="margin-top:8px">${esc(COVERAGE_NOTE)}</p>`;
+  }
+
+  /* 文法の罠 */
+  const tb = $("#trapBox");
+  if (tb) {
+    tb.innerHTML = GRAMMAR_TRAPS.map((t) => {
+      const m = t.concept ? S.mem?.[t.concept]?.mastery : null;
+      return `<details class="trap">
+        <summary><b>${esc(t.name)}</b><span class="trap-lv">${esc(t.level)}</span>
+          ${m != null ? `<span class="trap-m ${m >= 0.7 ? "ok" : "ng"}">習得 ${Math.round(m * 100)}%</span>` : ""}</summary>
+        <div class="trap-ab"><div class="trap-ng">✕ ${esc(t.ng)}</div><div class="trap-ok">○ ${esc(t.ok)}</div></div>
+        <p class="trap-why"><b>なぜ日本語話者がこうなるか:</b>${esc(t.why)}</p>
+        <p class="trap-rule"><b>見分け方:</b>${esc(t.rule)}</p>
+        ${t.check ? `<p class="trap-chk"><b>確かめ方:</b>${esc(t.check)}</p>` : ""}
+        <button class="btn btn-sm ghost" data-trap="${t.id}">ここを練習する</button>
+      </details>`;
+    }).join("");
+    tb.querySelectorAll("[data-trap]").forEach((b) => b.onclick = () => {
+      const t = GRAMMAR_TRAPS.find((x) => x.id === b.dataset.trap);
+      S.persona = "sensei"; renderPersona(); go("study");
+      send(`英語の「${t.name}」を練習したいです。まず、なぜ日本語だとまちがえるのかを教えてから、問題を出してください。`);
+    });
+  }
+
+  /* 読む・書く・受験 */
+  const isJHS = GRADES.indexOf(S.grade || "中1") <= 2;
+  const tabs = [["reading", "📖 読む"], ["writing", "✍️ 書く"], ["irregular", "🔁 不規則動詞"],
+                ["parts", "🧩 接辞・語根"], ["trap", "⚠️ 和製英語"], ["poly", "🔀 多義語"]];
+  if (!isJHS) tabs.push(["exam", "🎓 受験"]);
+  const rt = $("#rwTabs");
+  if (rt) {
+    if (!tabs.some((t) => t[0] === rwTab)) rwTab = "reading";
+    rt.innerHTML = tabs.map(([id, n]) => `<button class="et ${rwTab === id ? "on" : ""}" data-rw="${id}">${n}</button>`).join("");
+    rt.querySelectorAll("[data-rw]").forEach((b) => b.onclick = () => { rwTab = b.dataset.rw; renderEnglish(); });
+  }
+  const rb = $("#rwBox");
+  if (rb) {
+    rb.innerHTML = renderRwPanel(rwTab);
+    rb.querySelectorAll("[data-say]").forEach((b) => b.onclick = () => speakSafe(b.dataset.say));
+  }
+}
+
+function renderRwPanel(kind) {
+  if (kind === "reading") {
+    return `<h3 class="sub">読むときの4つの決まり</h3>
+      ${READING_RULES.map((r) => `<div class="rr"><b>${esc(r.n)}</b>
+        <p>${esc(r.how)}</p><p class="rr-w">${esc(r.why)}</p></div>`).join("")}
+      <h3 class="sub">つなぎ言葉 — これが見えると流れが分かる</h3>
+      ${DISCOURSE.map((d) => `<div class="dm"><b>${esc(d.k)}</b>
+        <div class="dm-w">${d.w.map((w) => `<button class="dm-b" data-say="${esc(w)}">${esc(w)}</button>`).join("")}</div></div>`).join("")}
+      <h3 class="sub">設問の型と解き方</h3>
+      ${QUESTION_TYPES.map((q) => `<div class="qt"><b>${esc(q.t)}</b><p>${esc(q.how)}</p></div>`).join("")}`;
+  }
+  if (kind === "writing") {
+    return `${WRITING_STEPS.map((w) => `<div class="ws"><b>${esc(w.n)}</b>
+      <p class="ws-what">${esc(w.what)}</p>
+      ${w.ex ? `<p class="ws-ex">${esc(w.ex)}</p>` : ""}
+      <p class="ws-why">${esc(w.why)}</p></div>`).join("")}
+      <h3 class="sub">${esc(ESSAY_FRAME.name)}</h3>
+      <div class="ef">${ESSAY_FRAME.steps.map((s) => `<div>${esc(s)}</div>`).join("")}
+        <p class="ws-why">${esc(ESSAY_FRAME.note)}</p></div>`;
+  }
+  if (kind === "irregular") {
+    return IRREGULAR.map((g) => `<div class="irg"><h3 class="sub">${esc(g.g)}</h3>
+      <p class="cs">${esc(g.note)}</p>
+      <div class="tw"><table class="irt"><tr><th>原形</th><th>過去</th><th>過去分詞</th><th>意味</th></tr>
+      ${g.v.map(([a, b, c, m]) => `<tr><td><button class="dm-b" data-say="${esc(a)}">${esc(a)}</button></td>
+        <td>${esc(b)}</td><td>${esc(c)}</td><td>${esc(m)}</td></tr>`).join("")}</table></div></div>`).join("");
+  }
+  if (kind === "parts") {
+    return `<p class="cs">知らない語が出たら、まずここで崩せないか試します。
+      <b>語をひとつずつ覚えるより、部品を覚えるほうが速い</b>ことがあります。</p>
+      <div class="tw"><table class="irt"><tr><th>部品</th><th>種類</th><th>意味</th><th>例</th></tr>
+      ${WORD_PARTS.map((p) => `<tr><td><b>${esc(p.p)}</b></td><td>${esc(p.k)}</td><td>${esc(p.m)}</td>
+        <td>${p.ex.map((e) => `<button class="dm-b" data-say="${esc(e)}">${esc(e)}</button>`).join("")}</td></tr>`).join("")}</table></div>`;
+  }
+  if (kind === "trap") {
+    return `<p class="cs">そのまま言うと<b>通じない</b>か、<b>別の意味</b>になる言葉です。</p>
+      <div class="tw"><table class="irt"><tr><th>日本語</th><th>✕ 通じない</th><th>○ 正しい</th><th>なぜ</th></tr>
+      ${TRAP_WORDS.map((t) => `<tr><td>${esc(t.jp)}</td><td class="ng">${esc(t.ng)}</td>
+        <td class="ok"><button class="dm-b" data-say="${esc(t.ok)}">${esc(t.ok)}</button></td>
+        <td>${esc(t.note)}</td></tr>`).join("")}</table></div>`;
+  }
+  if (kind === "poly") {
+    return `<p class="cs">知っている意味で読むと<b>外れる</b>語です。長文で意味が通らないときは、たいていこれです。</p>
+      <div class="poly">${POLYSEMY.map((p) => `<div class="pw">
+        <button class="dm-b" data-say="${esc(p.w)}">${esc(p.w)}</button>
+        <span>${p.m.map(esc).join(" / ")}</span></div>`).join("")}</div>`;
+  }
+  if (kind === "exam") {
+    return `${EXAM_ENGLISH.structure.map((s) => `<div class="ex-s"><b>${esc(s.t)}</b>
+      <span class="ex-p">${esc(s.p)}</span><p>${esc(s.n)}</p></div>`).join("")}
+      <div class="note-box">${esc(EXAM_ENGLISH.note)}</div>
+      <h3 class="sub">時間の使い方</h3>
+      ${EXAM_ENGLISH.timing.map((t) => `<div class="qt"><p>${esc(t)}</p></div>`).join("")}`;
+  }
+  return "";
+}
+
+/* ── 発音ドリル ─────────────────────────────────────────── */
+
+async function speakSafe(text, opts) {
+  if (!ttsSupported()) { toast("この端末では読み上げが使えません"); return; }
+  if (!enVoices().length) {
+    loadVoices();
+    if (!enVoices().length) { toast("英語の音声がまだ読み込まれていません。少し待ってからもう一度押してください"); return; }
+  }
+  await speak(text, opts);
+}
+
+/** 聞き分け — どちらかを読み上げて、どちらだったか当てる */
+function startListenDrill(p) {
+  const area = $("#pdArea");
+  const pair = p.pairs[Math.floor(Math.random() * p.pairs.length)];
+  const which = Math.random() < 0.5 ? 0 : 1;
+  area.innerHTML = `<div class="drill">
+    <p class="dr-q">どっちに聞こえた?</p>
+    <button class="btn btn-sm ghost" id="drReplay">🔊 もう一度きく</button>
+    <div class="dr-ab">${pair.map((w, i) => `<button class="dr-a" data-i="${i}">${esc(w)}</button>`).join("")}</div>
+  </div>`;
+  speakSafe(pair[which]);
+  $("#drReplay").onclick = () => speakSafe(pair[which]);
+  area.querySelectorAll("[data-i]").forEach((b) => b.onclick = () => {
+    const ok = Number(b.dataset.i) === which;
+    notePron(S, p.id, "listen", ok); save();
+    area.innerHTML = `<div class="drill">
+      <div class="dr-res ${ok ? "ok" : "ng"}">${ok ? "◎ 正解" : "△ ちがいました"}</div>
+      <p class="dr-w">流れたのは <b>${esc(pair[which])}</b> でした。</p>
+      ${ok ? "" : `<p class="dr-tip">💡 ${esc(p.tip)}</p>`}
+      <div class="dr-ab">
+        <button class="dm-b" data-say="${esc(pair[0])}">🔊 ${esc(pair[0])}</button>
+        <button class="dm-b" data-say="${esc(pair[1])}">🔊 ${esc(pair[1])}</button>
+      </div>
+      <button class="btn btn-sm" id="drNext">つぎ</button></div>`;
+    area.querySelectorAll("[data-say]").forEach((x) => x.onclick = () => speakSafe(x.dataset.say));
+    $("#drNext").onclick = () => startListenDrill(p);
+  });
+}
+
+/** 言ってみる — お手本 → 録音 → 聞き比べ(使える端末では自動判定も) */
+function startSayDrill(p) {
+  const area = $("#pdArea");
+  const word = (p.pairs[Math.floor(Math.random() * p.pairs.length)] || ["hello"])[0];
+  area.innerHTML = `<div class="drill">
+    <p class="dr-q">この語を言ってみよう</p>
+    <div class="dr-word"><button class="dm-b big" data-say="${esc(word)}">🔊 ${esc(word)}</button></div>
+    <p class="cs">まずお手本を2回聞いてから、まねして言います。</p>
+    <div class="dr-ab">
+      ${canRecord() ? `<button class="btn btn-sm" id="drRec">🎙 録音してみる</button>` : ""}
+      ${canRecognize() ? `<button class="btn btn-sm ghost" id="drAsr">🎤 通じるか試す</button>` : ""}
+    </div>
+    ${!canRecord() && !canRecognize()
+      ? `<p class="cs">この端末ではマイクが使えません。お手本を聞いて、声に出してまねするだけでも効果があります。</p>` : ""}
+    <div id="drOut"></div></div>`;
+  area.querySelectorAll("[data-say]").forEach((b) => b.onclick = () => speakSafe(b.dataset.say));
+
+  const rec = $("#drRec");
+  if (rec) rec.onclick = async () => {
+    if (recBusy()) {
+      const r = await recStop();
+      rec.textContent = "🎙 録音してみる"; rec.classList.remove("rec-on");
+      if (!r.ok) { $("#drOut").innerHTML = `<p class="dr-err">録音できませんでした。</p>`; return; }
+      $("#drOut").innerHTML = `<div class="cmp">
+        <p><b>聞き比べてみて。</b>ちがうところが自分で分かれば、そこが直せる場所です。</p>
+        <button class="dm-b" data-say="${esc(word)}">🔊 お手本</button>
+        <audio controls src="${r.url}"></audio>
+        <div class="dr-ab"><button class="btn btn-sm ghost" id="cmpAsk">先生に聞いてみる</button></div></div>`;
+      $("#drOut").querySelectorAll("[data-say]").forEach((b) => b.onclick = () => speakSafe(b.dataset.say));
+      $("#cmpAsk").onclick = () => { S.persona = "sensei"; renderPersona(); go("study");
+        send(`英語の「${p.name}」の発音を練習しています。「${word}」を言ってみました。口の形をもう一度教えてください。カタカナは使わないでください。`); };
+    } else {
+      const r = await recStart();
+      if (!r.ok) {
+        $("#drOut").innerHTML = `<p class="dr-err">${
+          r.error === "denied" ? "マイクの使用が許可されませんでした。設定から許可してください。" : "この端末では録音が使えません。"}</p>`;
+        return;
+      }
+      rec.textContent = "⏹ 止める"; rec.classList.add("rec-on");
+    }
+  };
+
+  const asr = $("#drAsr");
+  if (asr) asr.onclick = async () => {
+    $("#drOut").innerHTML = `<p class="dr-listen">🎤 聞いています… <b>${esc(word)}</b> と言ってみて</p>`;
+    const r = await listenOnce({});
+    if (!r.ok) {
+      $("#drOut").innerHTML = `<p class="dr-err">${
+        r.error === "no-speech" || r.error === "timeout" ? "聞き取れませんでした。もう一度どうぞ。"
+        : r.error === "not-allowed" ? "マイクの使用が許可されませんでした。" : "この端末では自動判定が使えません。"}</p>`;
+      return;
+    }
+    const cmp = compareSpoken(word, r.transcript);
+    const ok = cmp.score >= 1;
+    notePron(S, p.id, "say", ok); save();
+    const diag = diagnosePronunciation(word, r.transcript);
+    $("#drOut").innerHTML = `<div class="drill">
+      <div class="dr-res ${ok ? "ok" : "ng"}">${ok ? "◎ ちゃんと伝わりました" : "△ こう聞こえました"}</div>
+      <p class="dr-w">言おうとした語:<b>${esc(word)}</b> / 聞こえた語:<b>${esc(cmp.heard || "(なし)")}</b></p>
+      ${diag.length ? `<p class="dr-tip">💡 ${esc(diag[0].tip)}</p>` : ok ? "" : `<p class="dr-tip">💡 ${esc(p.tip)}</p>`}
+      <p class="cs">※これは「機械に通じたか」の目安です。通じなければ、人にも通じにくい可能性があります。
+        通じたからといって完璧という意味ではありません。</p>
+      <button class="btn btn-sm" id="drNext2">もう一度</button></div>`;
+    $("#drNext2").onclick = () => startSayDrill(p);
+  };
 }
 
 /* ═══════════════ APIの見える化 ═══════════════
