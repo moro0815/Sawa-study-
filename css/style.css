@@ -1178,3 +1178,18 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   border-radius: 999px; padding: 9px 12px; font: inherit; font-size: 11.5px; color: var(--ink2);
   cursor: pointer; white-space: nowrap; }
 .undo-btn:active { background: var(--bg); }
+
+/* ── 教科をえらぶ(弱点タブ) ── */
+.subj-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 7px; }
+.sp { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  border: 1.5px solid var(--line); background: var(--card); border-radius: 12px; padding: 10px 6px;
+  font: inherit; color: inherit; cursor: pointer; }
+.sp.on { border-color: var(--accent); background: var(--accent-soft); }
+.sp-e { font-size: 19px; }
+.sp b { font-size: 12.5px; }
+.sp-n { font-size: 10.5px; color: var(--ink3); font-variant-numeric: tabular-nums; }
+.sp-a { font-size: 9.5px; font-weight: 700; color: var(--red); background: #fdeaea;
+  border-radius: 999px; padding: 1px 6px; margin-top: 2px; }
+.kmap-legend { flex-wrap: wrap; margin: 2px 0 10px; font-size: 11px; }
+.kmap-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.kmap-legend .dot { width: 13px; height: 13px; border-radius: 4px; }

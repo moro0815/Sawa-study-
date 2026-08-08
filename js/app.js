@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v22";
+const APP_VERSION = "v23";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1214,32 +1214,63 @@ function renderWeak() {
       <p class="qc-d">${q.desc}</p>${items ? `<p class="qc-items">${esc(items)}</p>` : ""}</div>`;
   }).join("");
 
-  // 診断セレクト
-  const sel = $("#diagSelect");
-  if (!sel.dataset.filled) {
-    sel.innerHTML = `<option value="">つまずいた単元を選ぶ…</option>` +
-      Object.keys(SUBJECTS).map((sid) => `<optgroup label="${SUBJECTS[sid].name}">` +
-        conceptsBySubject(sid).map((c) => `<option value="${c.id}">${c.g}・${c.n}</option>`).join("") + `</optgroup>`).join("");
-    sel.dataset.filled = "1";
-    sel.onchange = () => sel.value && renderDiag(sel.value);
-  }
-
-  // 知識マップ
-  if (!$("#mapFilter").dataset.filled) {
-    $("#mapFilter").innerHTML = Object.entries(SUBJECTS).map(([k, v]) =>
-      `<button class="mf ${k === mapFilter ? "on" : ""}" data-mf="${k}">${v.emoji} ${v.name}</button>`).join("");
-    $("#mapFilter").dataset.filled = "1";
-    $$("[data-mf]").forEach((b) => b.onclick = () => {
-      mapFilter = b.dataset.mf;
-      $$("[data-mf]").forEach((x) => x.classList.toggle("on", x.dataset.mf === mapFilter));
-      renderMap();
-    });
-  }
+  renderSubjectPick();
   renderMap();
+  renderDiagSelect();
+}
+
+/* ── 教科の選び方をひとつにする ─────────────────────────────
+   ★以前は「マップの絞り込みボタン」と「診断の211件のドロップダウン」が
+   別々に動いていた。どちらにも見出しが無く、選ぶ意味も見えなかった。
+   ここで選んだ教科が、マップと診断の両方に効くようにした。 */
+
+function renderSubjectPick() {
+  const box = $("#subjPick");
+  if (!box) return;
+  box.innerHTML = Object.entries(SUBJECTS).map(([k, v]) => {
+    const cs = conceptsBySubject(k);
+    // ★マップの緑マスと同じ数え方にそろえる(以前は「触れた単元数」で、
+    //   すぐ下のマップの見出しと数が食い違っていた)
+    const done = cs.filter((c) => (S.mem[c.id]?.mastery || 0) >= 0.7).length;
+    // その教科の「要注意(自信あり×不正解)」の数
+    const alert = cs.filter((c) => {
+      const st = S.mem[c.id];
+      return st && (st.flagged || st.history.at(-1)?.q === "hi-wrong");
+    }).length;
+    return `<button class="sp ${k === mapFilter ? "on" : ""}" data-mf="${k}">
+      <span class="sp-e">${v.emoji}</span>
+      <b>${esc(v.name)}</b>
+      <span class="sp-n">できた ${done} / ${cs.length}</span>
+      ${alert ? `<span class="sp-a">要注意 ${alert}</span>` : ""}
+    </button>`;
+  }).join("");
+  box.querySelectorAll("[data-mf]").forEach((b) => b.onclick = () => {
+    mapFilter = b.dataset.mf;
+    renderSubjectPick(); renderMap(); renderDiagSelect();
+    $("#knowledgeMap")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+/** 診断のドロップダウン。選んだ教科ぶんだけにして、学年でまとめる */
+function renderDiagSelect() {
+  const sel = $("#diagSelect");
+  if (!sel) return;
+  const keep = sel.value;
+  const cs = conceptsBySubject(mapFilter);
+  const byGrade = {};
+  for (const c of cs) (byGrade[c.g] ||= []).push(c);
+  sel.innerHTML = `<option value="">${SUBJECTS[mapFilter].name}の単元から選ぶ…</option>` +
+    GRADES.filter((g) => byGrade[g]).map((g) => `<optgroup label="${g}">` +
+      byGrade[g].map((c) => `<option value="${c.id}">${esc(c.n)}</option>`).join("") + `</optgroup>`).join("");
+  if (cs.some((c) => c.id === keep)) sel.value = keep;
+  sel.onchange = () => sel.value && renderDiag(sel.value);
 }
 
 function renderMap() {
   const cs = conceptsBySubject(mapFilter);
+  const done = cs.filter((c) => (S.mem[c.id]?.mastery || 0) >= 0.7).length;
+  const note = $("#mapNote");
+  if (note) note.textContent = `${SUBJECTS[mapFilter].name} — ${cs.length}単元のうち ${done}個できている`;
   const byGrade = {};
   for (const c of cs) (byGrade[c.g] ||= []).push(c);
   $("#knowledgeMap").innerHTML = GRADES.filter((g) => byGrade[g]).map((g) =>
@@ -1254,7 +1285,10 @@ function renderMap() {
       return `<span class="kc ${cls}" data-kc="${c.id}" title="${esc(c.u)}">${esc(c.n)}</span>`;
     }).join("") + `</div></div>`).join("");
   $$("[data-kc]").forEach((el) => el.onclick = () => {
-    $("#diagSelect").value = el.dataset.kc; renderDiag(el.dataset.kc);
+    const sel = $("#diagSelect");
+    if (![...sel.options].some((o) => o.value === el.dataset.kc)) renderDiagSelect();
+    sel.value = el.dataset.kc;
+    renderDiag(el.dataset.kc);
     $("#diagResult").scrollIntoView({ behavior: "smooth", block: "center" });
   });
 }

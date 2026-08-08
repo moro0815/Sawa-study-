@@ -277,21 +277,31 @@
     <div class="quad" id="quadGrid"></div>
   </div>
 
-  <div class="card">
-    <h2 class="ct">▶ 前提をさかのぼる(原因診断)</h2>
-    <p class="cs">つまずいた単元を選ぶと、その土台になっている過去の単元をさかのぼり、<b>本当に壊れている場所</b>を探します。</p>
-    <select id="diagSelect" class="select"></select>
-    <div id="diagResult" class="diag-result"></div>
+
+
+  <div class="card" id="cardSubjectPick">
+    <h2 class="ct">▶ ① 教科をえらぶ</h2>
+    <p class="cs">ここで選んだ教科が、<b>下の「知識マップ」と「原因診断」の両方</b>に反映されます。</p>
+    <div class="subj-pick" id="subjPick"></div>
   </div>
 
   <div class="card">
-    <h2 class="ct">▶ 知識マップ</h2>
-    <div class="map-filter" id="mapFilter"></div>
-    <div id="knowledgeMap" class="kmap"></div>
+    <h2 class="ct">▶ ② 知識マップ <span class="ct-note" id="mapNote"></span></h2>
+    <p class="cs">その教科で習う単元を、学年順にぜんぶ並べています。<br>
+      <b>気になる単元をタップ</b>すると、下の「原因診断」がその単元で始まります。</p>
     <div class="kmap-legend">
-      <span><i class="dot d0"></i>未学習</span><span><i class="dot d1"></i>学習中</span>
-      <span><i class="dot d2"></i>習得</span><span><i class="dot d3"></i>要注意</span>
+      <span><i class="dot d0"></i>まだ</span><span><i class="dot d1"></i>あやしい</span>
+      <span><i class="dot d2"></i>できている</span><span><i class="dot d3"></i>要注意</span>
     </div>
+    <div id="knowledgeMap" class="kmap"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ ③ 前提をさかのぼる(原因診断)</h2>
+    <p class="cs">つまずいた単元を選ぶと、その土台になっている過去の単元をさかのぼり、<b>本当に壊れている場所</b>を探します。<br>
+      上のマップをタップしても、ここが動きます。</p>
+    <select id="diagSelect" class="select"></select>
+    <div id="diagResult" class="diag-result"></div>
   </div>
 </section>
 
