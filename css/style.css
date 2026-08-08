@@ -413,8 +413,8 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   width: 100%; max-width: 720px; display: flex; background: #fff;
   border-top: 1px solid var(--line); z-index: 30; padding-bottom: env(safe-area-inset-bottom);
 }
-.nb { flex: 1; background: none; border: none; padding: 7px 0 9px; font-size: 9.5px; color: var(--ink3); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 1px; font-family: inherit; }
-.nb span { font-size: 18px; }
+.nb { flex: 1; background: none; border: none; padding: 7px 0 9px; font-size: 9px; white-space: nowrap; color: var(--ink3); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 1px; font-family: inherit; }
+.nb span { font-size: 17px; }
 .nb.active { color: var(--accent); font-weight: 700; }
 
 /* ── トースト ── */
@@ -735,11 +735,11 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   .screen.active { max-width: 1480px; margin: 0 auto; }
 
   /* カード類を段組みにする。1枚の幅は読みやすい範囲に収まる */
-  #s-home.screen.active, #s-weak.screen.active, #s-grade.screen.active,
-  #s-plan.screen.active, #s-parent.screen.active {
+  #s-home.screen.active, #s-learn.screen.active, #s-weak.screen.active,
+  #s-grade.screen.active, #s-plan.screen.active, #s-parent.screen.active {
     columns: 2; column-gap: 18px;
   }
-  #s-home .card, #s-weak .card, #s-grade .card,
+  #s-home .card, #s-learn .card, #s-weak .card, #s-grade .card,
   #s-plan .card, #s-parent .card {
     break-inside: avoid; page-break-inside: avoid;
     margin-bottom: 18px;
@@ -798,14 +798,14 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 
 /* 大きい画面では3列。1枚あたりの幅は変えない */
 @media (min-width: 1440px) {
-  #s-home.screen.active, #s-weak.screen.active, #s-grade.screen.active,
-  #s-plan.screen.active, #s-parent.screen.active { columns: 3; }
+  #s-home.screen.active, #s-learn.screen.active, #s-weak.screen.active,
+  #s-grade.screen.active, #s-plan.screen.active, #s-parent.screen.active { columns: 3; }
   #s-study.screen.active { max-width: 980px; }
 }
 
 @media (min-width: 1900px) {
-  #s-home.screen.active, #s-weak.screen.active, #s-grade.screen.active,
-  #s-plan.screen.active, #s-parent.screen.active { columns: 4; }
+  #s-home.screen.active, #s-learn.screen.active, #s-weak.screen.active,
+  #s-grade.screen.active, #s-plan.screen.active, #s-parent.screen.active { columns: 4; }
 }
 
 /* マウス操作の端末では、押せるものがわかるように */
@@ -814,3 +814,71 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   .conf-btn:hover, .qa:hover, .seg-btn:hover { filter: brightness(.97); }
   .card { transition: box-shadow .2s, background-color .3s; }
 }
+
+/* ── 学び方タブ ── */
+.win { display: flex; align-items: baseline; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.win:last-of-type { border-bottom: none; }
+.win-k { font-size: 9.5px; font-weight: 700; border-radius: 5px; padding: 2px 6px; flex-shrink: 0; }
+.win-k.fix { background: #fdeaea; color: var(--red); }
+.win-k.new { background: #e8f6f0; color: var(--green); }
+.win-s { font-size: 10.5px; color: var(--ink3); margin-left: auto; }
+
+.qz-q { font-size: 14px; font-weight: 700; line-height: 1.7; margin-bottom: 10px; }
+.qz-a { display: block; width: 100%; text-align: left; background: var(--bg); border: 1.5px solid var(--line);
+  border-radius: 10px; padding: 12px 14px; font-size: 13.5px; font-family: inherit; color: var(--ink);
+  cursor: pointer; margin-bottom: 7px; line-height: 1.6; }
+.qz-a:active { border-color: var(--accent); }
+.qz-res { font-size: 14px; font-weight: 700; padding: 10px; border-radius: 9px; text-align: center; margin-bottom: 9px; }
+.qz-res.ok { background: #e8f6f0; color: var(--green); }
+.qz-res.ng { background: #fff8e8; color: var(--amber); }
+.qz-why { font-size: 12px; color: var(--ink2); line-height: 1.85; }
+.qz-done { border-bottom: 1px solid var(--line); padding: 9px 0; font-size: 12px; }
+.qz-done:last-child { border: none; }
+.qz-done p { color: var(--ink2); line-height: 1.75; margin-top: 3px; }
+.linklike { background: none; border: none; color: var(--accent); text-decoration: underline; cursor: pointer; font-family: inherit; font-size: 12px; }
+
+.mth { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.mth-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.mth-h b { font-size: 13.5px; }
+.mth-s { font-size: 9.5px; font-weight: 700; background: var(--accent-soft); color: var(--accent); border-radius: 5px; padding: 2px 6px; }
+.mth-ab { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 9px 0; }
+.mth-bad, .mth-good { font-size: 11.5px; border-radius: 8px; padding: 8px 9px; line-height: 1.6; }
+.mth-bad { background: #fdf3f3; color: var(--red); }
+.mth-good { background: #f0f9f5; color: var(--green); }
+.mth-why { font-size: 12px; color: var(--ink2); line-height: 1.8; }
+.mth-ev { background: var(--bg); border-radius: 9px; padding: 10px; margin-top: 9px; font-size: 11.5px; color: var(--ink3); line-height: 1.8; }
+.mth-ev.has { background: var(--accent-soft); color: var(--ink2); }
+.mth-ev b { color: var(--ink); font-size: 11px; }
+.mth-gap { display: inline-block; background: var(--green); color: #fff; border-radius: 5px; padding: 1px 6px; font-size: 10px; font-weight: 700; margin-left: 6px; }
+.mth-src { font-size: 10px; color: var(--ink3); margin-top: 6px; }
+
+.act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.act { text-align: left; background: var(--bg); border: 1.5px solid var(--line); border-radius: 11px;
+  padding: 11px; cursor: pointer; font-family: inherit; position: relative; }
+.act:active { border-color: var(--accent); }
+.act.used { opacity: .55; }
+.act-e { font-size: 20px; display: block; }
+.act b { font-size: 12.5px; display: block; margin: 2px 0 3px; color: var(--ink); }
+.act-w { font-size: 10.5px; color: var(--ink3); line-height: 1.6; display: block; }
+.act-tag { position: absolute; top: 7px; right: 7px; font-size: 9px; color: var(--ink3); }
+
+.ph { border-bottom: 1px solid var(--line); padding: 11px 0; }
+.ph:last-child { border: none; }
+.ph-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ph-h b { font-size: 13px; }
+.ph-n { font-size: 11.5px; color: var(--ink2); }
+.ph-bar { display: flex; gap: 4px; margin: 7px 0; }
+.ph-bar i { flex: 1; height: 5px; border-radius: 99px; background: var(--line); }
+.ph-bar i.on { background: linear-gradient(90deg, var(--accent), var(--purple)); }
+.ph-w { font-size: 11.5px; color: var(--ink3); line-height: 1.7; }
+.ph-do { font-size: 11.5px; color: var(--ink2); line-height: 1.7; margin-top: 4px; }
+.ph-do b { color: var(--ink); }
+
+/* ── AIの通信 ── */
+.msg-meta { font-size: 10px; color: var(--ink3); margin-top: 4px; padding-left: 2px; }
+.api-row { display: flex; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 11.5px; }
+.api-row:last-child { border: none; }
+.api-row.ng { color: var(--red); }
+.api-t { color: var(--ink3); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.api-b { color: var(--ink2); line-height: 1.6; }
+.api-tools { display: block; font-size: 10px; color: var(--accent); margin-top: 2px; }

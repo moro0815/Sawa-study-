@@ -18,23 +18,29 @@ const MAX_TOOL_ROUNDS = 6;
 async function chatWithTools(o) {
   let messages = trimHistory(o.messages);
   let finalText = "";
+  const stat = { rounds: 0, tools: [], usage: { in: 0, out: 0 }, startedAt: Date.now() };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    stat.rounds++;
+    o.onRound?.(round);
     const res = await sendToProvider({
       provider: o.provider, model: o.model, apiKey: o.apiKey, baseUrl: o.baseUrl,
       system: o.system, messages, tools: o.tools,
       onDelta: (t) => { finalText += t; o.onDelta?.(t); },
     });
+    stat.usage.in += res.usage?.in || 0;
+    stat.usage.out += res.usage?.out || 0;
 
     messages = [...messages, { role: "assistant", content: res.content }];
 
     const toolUses = res.content.filter((b) => b.type === "tool_use");
-    if (!toolUses.length) return { text: finalText, messages };
+    if (!toolUses.length) { stat.ms = Date.now() - stat.startedAt; return { text: finalText, messages, stat }; }
 
     const results = [];
     for (const tu of toolUses) {
       const schema = o.tools?.find((t) => t.name === tu.name)?.input_schema;
       const input = coerceArgs(tu.input, schema);
+      stat.tools.push(tu.name);
       o.onToolUse?.(tu.name, input);
       try {
         const out = await o.runTool(tu.name, input);
@@ -45,7 +51,8 @@ async function chatWithTools(o) {
     }
     messages = [...messages, { role: "user", content: results }];
   }
-  return { text: finalText, messages };
+  stat.ms = Date.now() - stat.startedAt;
+  return { text: finalText, messages, stat };
 }
 
 /**

@@ -223,6 +223,40 @@ const TOOLS = [
     },
   },
   {
+    name: "note_activity",
+    description:
+      "今回どの『活動の型』で進めたかを記録する。毎回のやりとりの最後に必ず呼ぶこと。" +
+      "これを記録しないと、同じ型が続いて飽きの原因になる。",
+    input_schema: {
+      type: "object",
+      properties: {
+        activity: { type: "string", description: "型のID(quiz/predict/spoterr/teach/why/real/speed/connect)" },
+      },
+      required: ["activity"],
+    },
+  },
+  {
+    name: "note_engagement",
+    description:
+      "沙和さんが【自分から】始めた、または【自分から】「なぜ?」と聞いてきたときに呼ぶ。" +
+      "興味がどの段階まで育っているかの判断に使う。うながされてやった場合は呼ばないこと。",
+    input_schema: {
+      type: "object",
+      properties: {
+        subject: { type: "string", description: "教科ID" },
+        kind: { type: "string", enum: ["self_started", "asked_why"], description: "self_started=自分から始めた asked_why=自分から理由を聞いた" },
+      },
+      required: ["subject", "kind"],
+    },
+  },
+  {
+    name: "get_learning_style",
+    description:
+      "教科ごとの興味の段階、直近で使った活動の型、勉強法ごとの本人のデータを取得する。" +
+      "『どう勉強したらいい?』と聞かれたとき、また出題の型を決めるときに使う。",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "get_homework",
     description:
       "今出ている宿題(学校ぶん・AIぶん)、今日まだ使える時間、直近の正答率と難易度の調整方針を取得する。" +
@@ -346,6 +380,7 @@ ${past.length ? `- 過去に持っていた夢:${past.join("、")}(変わった�
 
 ${PEDAGOGY_RULES}
 ${HOMEWORK_RULES}
+${profile.learningBlock || ""}
 
 # 現在の学習状況
 ${statusSummary}
@@ -361,6 +396,9 @@ ${profile.homeworkStatus || "- まだ宿題の記録はありません。"}
 - 宿題を出す前は【必ず】 get_homework → suggest_homework_items → assign_homework の順
 - 学校の宿題の写真・スキャンを受け取ったら、内容を読んで record_school_homework で登録する
 - 宿題の1問が終わるたび record_homework_result と record_answer の両方を呼ぶ
+- やりとりの最後に【必ず】 note_activity で今回の型を記録する
+- 沙和さんが自分から始めた/自分から「なぜ」と聞いたときは note_engagement を呼ぶ
+- 「どう勉強したらいい?」と聞かれたら get_learning_style を呼んでから答える
 
 # 写真・スキャンを受け取ったとき
 1. まず読み取れた内容を短く確認する(「数学ワークのp.42、一次関数の問題が5問だね」)

@@ -85,6 +85,14 @@ function costPerTurnYen(providerId, modelId, usdJpy = 155) {
   return Math.round(usd * usdJpy * 10) / 10;
 }
 
+/** 実際に使ったトークン数から円を出す */
+function usageYen(providerId, modelId, usage, usdJpy = 155) {
+  const m = providerOf(providerId).models.find((x) => x.id === modelId);
+  if (!m || m.inUsd == null || !usage) return null;
+  const usd = (usage.in / 1e6) * m.inUsd + (usage.out / 1e6) * m.outUsd;
+  return Math.round(usd * usdJpy * 100) / 100;
+}
+
 /* ── エラー ──────────────────────────────────────────────── */
 
 class ApiError extends Error {
@@ -187,8 +195,13 @@ async function sendAnthropic({ apiKey, model, system, messages, tools, onDelta }
   const blocks = [];
   const partial = {};
   let stopReason = null;
+  const usage = { in: 0, out: 0 };
 
   await readSSE(res, (ev) => {
+    if (ev.type === "message_start") {
+      const u = ev.message?.usage || {};
+      usage.in += (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+    }
     if (ev.type === "content_block_start") {
       const cb = ev.content_block;
       if (cb.type === "text") partial[ev.index] = { type: "text", text: "" };
@@ -209,15 +222,16 @@ async function sendAnthropic({ apiKey, model, system, messages, tools, onDelta }
         blocks.push({ type: "tool_use", id: p.id, name: p.name, input });
       }
       delete partial[ev.index];
-    } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
-      stopReason = ev.delta.stop_reason;
+    } else if (ev.type === "message_delta") {
+      if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+      if (ev.usage?.output_tokens) usage.out = ev.usage.output_tokens;
     } else if (ev.type === "error") {
       throw new ApiError(0, ev.error?.message || "ストリーミングエラー");
     }
   });
 
   if (stopReason === "refusal") throw new ApiError(0, "この内容にはお答えできませんでした。別の聞き方を試してみてください。");
-  return { content: blocks.length ? blocks : [{ type: "text", text: "" }] };
+  return { content: blocks.length ? blocks : [{ type: "text", text: "" }], usage };
 }
 
 /* =========================================================================
@@ -317,8 +331,13 @@ async function sendGemini({ apiKey, model, system, messages, tools, onDelta }) {
   let calls = 0;
   let finish = null;
   let blocked = null;
+  const usage = { in: 0, out: 0 };
 
   await readSSE(res, (ev) => {
+    if (ev.usageMetadata) {
+      usage.in = ev.usageMetadata.promptTokenCount || usage.in;
+      usage.out = ev.usageMetadata.candidatesTokenCount || usage.out;
+    }
     if (ev.promptFeedback?.blockReason) blocked = ev.promptFeedback.blockReason;
     const cand = ev.candidates?.[0];
     if (!cand) return;
@@ -343,7 +362,7 @@ async function sendGemini({ apiKey, model, system, messages, tools, onDelta }) {
     throw new ApiError(0, "この内容にはお答えできませんでした。別の聞き方を試してみてください。");
   if (finish === "MALFORMED_FUNCTION_CALL")
     throw new ApiError(0, "うまく処理できませんでした。もう一度送ってみてください。");
-  return { content: blocks.length ? blocks : [{ type: "text", text: "" }] };
+  return { content: blocks.length ? blocks : [{ type: "text", text: "" }], usage };
 }
 
 /** APIキーで使えるモデル一覧を取得(設定画面の「一覧を取得」用) */
@@ -408,6 +427,7 @@ async function sendOpenAI({ apiKey, model, baseUrl, system, messages, tools, onD
     model,
     max_tokens: MAX_TOKENS,
     stream: true,
+    stream_options: { include_usage: true },
     messages: toOpenAIMessages(system, messages),
   };
   if (tools?.length) {
@@ -433,8 +453,10 @@ async function sendOpenAI({ apiKey, model, baseUrl, system, messages, tools, onD
 
   let text = "";
   const calls = [];   // index -> {id, name, args}
+  const usage = { in: 0, out: 0 };
 
   await readSSE(res, (ev) => {
+    if (ev.usage) { usage.in = ev.usage.prompt_tokens || usage.in; usage.out = ev.usage.completion_tokens || usage.out; }
     const d = ev.choices?.[0]?.delta;
     if (!d) return;
     if (d.content) { text += d.content; onDelta?.(d.content); }
@@ -455,7 +477,7 @@ async function sendOpenAI({ apiKey, model, baseUrl, system, messages, tools, onD
     try { input = c.args ? JSON.parse(c.args) : {}; } catch (_) {}
     blocks.push({ type: "tool_use", id: c.id || `ocall_${i}_${Date.now()}`, name: c.name, input });
   });
-  return { content: blocks.length ? blocks : [{ type: "text", text: "" }] };
+  return { content: blocks.length ? blocks : [{ type: "text", text: "" }], usage };
 }
 
 async function listOpenAIModels(apiKey, baseUrl) {

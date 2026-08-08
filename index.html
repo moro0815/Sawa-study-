@@ -140,6 +140,43 @@
   <div class="preview" id="preview" hidden></div>
 </section>
 
+<!-- ══════════ 学び方 ══════════ -->
+<section id="s-learn" class="screen">
+  <div class="card">
+    <h2 class="ct">▶ 今週できるようになったこと</h2>
+    <p class="cs">数字ではなく「何ができるようになったか」で見ます。<b>進んでいる実感が、やる気のいちばん強い燃料</b>だからです。</p>
+    <div id="winsBox"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 勉強法クイズ <span class="ct-note">先に予想してみて</span></h2>
+    <p class="cs">正解を見る前に自分で予想すると、そのあとの説明が強く残ります。<b>思っていたのと違った</b>ところほど、よく覚えられます。</p>
+    <div id="quizBox"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 学び方カード</h2>
+    <p class="cs">「よくない方法」がなくならないのは、<b>やった感じがするから</b>です。だからここでは、
+      沙和さん自身の記録から<b>実際にどれだけ差がついたか</b>を出します。</p>
+    <div id="methodBox"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 今日はどの型でやる? <span class="ct-note">飽きないために</span></h2>
+    <p class="cs">同じやり方が続くと飽きます。ごほうびで釣るのではなく、<b>やり方そのものを変えて</b>おもしろさを作ります。
+      好きな型を選ぶと、その形で始められます。</p>
+    <div class="act-grid" id="actBox"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 教科ごとの「好きの育ち具合」</h2>
+    <p class="cs">好きになるには順番があります(Hidi &amp; Renninger の興味発達4段階)。
+      <b>段階は飛ばせません。</b>まだ1〜2の教科に「自分で計画して」と言うと、そこで止まってしまいます。
+      これは成績ではないので、点数として見ないでください。</p>
+    <div id="phaseBox"></div>
+  </div>
+</section>
+
 <!-- ══════════ 弱点 ══════════ -->
 <section id="s-weak" class="screen">
   <div class="card">
@@ -474,6 +511,15 @@
   </div>
 
   <div class="card">
+    <h2 class="ct">▶ AIの通信 <span class="ct-note">ちゃんと動いているか</span></h2>
+    <div id="apiState"></div>
+    <button class="btn btn-primary" id="testApi">接続を確かめる</button>
+    <div id="apiTestResult"></div>
+    <h3 class="sub-h">直近のやりとり</h3>
+    <div id="apiLogBox"></div>
+  </div>
+
+  <div class="card">
     <h2 class="ct">▶ バージョン</h2>
     <div class="row-kv"><span>このファイルの版</span><b id="appVersion">—</b></div>
     <div class="row-kv"><span>端末に入っている版</span><b id="swVersion">—</b></div>
@@ -515,6 +561,7 @@
 <nav class="nav">
   <button class="nb active" data-go="home"><span>🏠</span>ホーム</button>
   <button class="nb" data-go="study"><span>💬</span>学習</button>
+  <button class="nb" data-go="learn"><span>💡</span>学び方</button>
   <button class="nb" data-go="weak"><span>🎯</span>弱点</button>
   <button class="nb" data-go="grade"><span>📊</span>成績</button>
   <button class="nb" data-go="plan"><span>🎓</span>受験</button>
@@ -527,6 +574,7 @@
 <script src="js/evidence.js"></script>
 <script src="js/curriculum.js"></script>
 <script src="js/homework.js"></script>
+<script src="js/learning.js"></script>
 <script src="js/memory.js"></script>
 <script src="js/careers.js"></script>
 <script src="js/exam.js"></script>

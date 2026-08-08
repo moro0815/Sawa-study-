@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v9";
+const APP_VERSION = "v10";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -36,6 +36,10 @@ const defaults = () => ({
   hyotei: {},            // 高校の評定平均 {ラベル: 値}
   dailyMinutes: null,    // 1日の学習時間(分)
   goals: [],             // [{text, deadline, at}]
+  engage: {},            // 教科ID -> {selfStarted, questions} 興味の段階の判定用
+  actLog: [],            // 使った活動の型の履歴(飽きの防止)
+  quizDone: {},          // 勉強法クイズの回答
+  apiLog: [],            // 直近のAPI呼び出し記録
   homework: [],          // [{id, source, title, items, due, ...}] 学校ぶん＋AIぶん
   sessions: [],          // [{date, answered, correct, minutes}]
   career: DEFAULT_CAREER,      // 今の志望(変数。固定しない)
@@ -425,6 +429,41 @@ async function runTool(name, input) {
       };
     }
 
+    case "note_activity": {
+      const ok = noteActivity(S, input.activity);
+      save();
+      return ok ? { noted: input.activity, recent: recentActivities(S, 3).map((x) => x.id),
+                    next_suggestions: suggestActivities(S).slice(0, 3).map((a) => ({ id: a.id, name: a.name, what: a.what })) }
+                : { error: "unknown activity", valid: ACTIVITIES.map((a) => a.id) };
+    }
+
+    case "note_engagement": {
+      const x = noteEngagement(S, input.subject, input.kind);
+      save(); renderAll();
+      const p = interestPhase(S, input.subject);
+      return { noted: true, counts: x, phase: { n: p.n, name: p.name, do_this: p.doThis, dont: p.dont } };
+    }
+
+    case "get_learning_style": {
+      const subj = ["math", "science", "english", "japanese", "social"];
+      return {
+        phases: subj.map((id) => {
+          const p = interestPhase(S, id);
+          return { subject: SUBJECTS[id]?.name || id, subject_id: id, phase: p.n, name: p.name,
+                   do_this: p.doThis, dont: p.dont, signals: p.signals };
+        }),
+        recent_activities: recentActivities(S, 3).map((x) => ACT_MAP[x.id]?.name),
+        suggestions: suggestActivities(S).slice(0, 4).map((a) => ({ id: a.id, name: a.name, what: a.what })),
+        methods: STUDY_METHODS.map((m) => {
+          const ev = m.evidence(S);
+          return { name: m.name, instead_of: m.bad, do_this: m.good, why: m.why,
+                   your_data: ev ? ev.text : "まだ判断できるだけの記録がありません" };
+        }),
+        recent_wins: recentWins(S).map((w) => `${w.name}(${w.kind})`),
+        note: "興味の段階は飛ばせません。1〜2の教科に自律を求めないでください。",
+      };
+    }
+
     case "get_homework": {
       const open = openAssignments(S.homework);
       return {
@@ -667,7 +706,7 @@ async function send(override) {
   clearPhoto(); S.lastConf = null; $("#confPanel").hidden = true;
   save();
 
-  const thinking = addMsg("ai", `${PERSONAS[S.persona].name}が考えています…`);
+  const thinking = addMsg("ai", `${PERSONAS[S.persona].name}が考えています…(${providerOf(S.provider).short} ${curModel()} に問い合わせ中)`);
   thinking.parentElement.classList.add("think");
   let span = null;
 
@@ -678,6 +717,7 @@ async function send(override) {
         name: S.name, grade: S.grade, career: curCareer(),
         pastDreams: (S.dreamHistory || []).map((d) => CAREER_MAP[d.career]?.name).filter(Boolean),
         homeworkStatus: homeworkStatusText(S.homework, S.dailyMinutes),
+        learningBlock: learningPromptBlock(S),
       }, statusSummary()),
       messages: S.apiMessages,
       tools: TOOLS,
@@ -686,11 +726,25 @@ async function send(override) {
         span.textContent += t; $("#chat").scrollTop = $("#chat").scrollHeight;
       },
       onToolUse: (n) => { if (!span) { thinking.parentElement.remove(); span = null; } toolLog(n); },
+      onRound: (i) => { if (i > 0 && !span) toolLog("__round" + i); },
       runTool,
     });
 
-    if (!span && res.text) { thinking.parentElement?.remove(); addMsg("ai", res.text); }
+    if (!span && res.text) { thinking.parentElement?.remove(); span = addMsg("ai", res.text); }
     else if (!span) thinking.parentElement?.remove();
+
+    // 何がどれだけ動いたかを残す・見せる
+    const u = res.stat?.usage || { in: 0, out: 0 };
+    const rec = { ok: true, provider: S.provider, model: curModel(), ms: res.stat?.ms || 0,
+                  in: u.in, out: u.out, yen: usageYen(S.provider, curModel(), u),
+                  tools: res.stat?.tools || [] };
+    logApi(rec);
+    if (span?.parentElement) {
+      const meta = document.createElement("div");
+      meta.className = "msg-meta";
+      meta.textContent = apiMetaLine(rec);
+      span.parentElement.appendChild(meta);
+    }
 
     S.apiMessages = res.messages;
     S.chat.push({ who: "ai", text: res.text, persona: S.persona });
@@ -704,6 +758,8 @@ async function send(override) {
 
     // 履歴の tool_use / tool_result の対応が崩れていたら、その場で直す。
     // 直さないと以後ずっと同じエラーが出続けてしまう。
+    logApi({ ok: false, provider: S.provider, model: curModel(),
+             error: e instanceof ApiError ? e.friendly() : String(e.message || e) });
     const broken = e instanceof ApiError && e.status === 400 && /tool_result|tool_use|tool_call/i.test(e.message);
     if (broken || historyLooksBroken(S.apiMessages)) {
       S.apiMessages = repairPairs(S.apiMessages);
@@ -790,6 +846,8 @@ function fileToBase64(file) {
 
 function renderAll() {
   renderHomework();
+  renderLearn();
+  renderApiPanel();
   applyStage();
   renderTop(); renderHome(); renderJourney(); renderLetters(); renderThemes();
   renderWeak(); renderGrade(); renderPlan(); renderParent();
@@ -1607,6 +1665,7 @@ function init() {
     save(); renderProviderUI();
   };
   $("#fetchModels").onclick = fetchModelList;
+  $("#testApi").onclick = testApi;
   renderProviderUI();
 
   $("#pName").value = S.name;
@@ -1800,6 +1859,205 @@ function init() {
   if (!curKey()) {
     go("parent");
     $("#settingsMsg").textContent = "はじめに、おうちの方が使うAIとAPIキーを設定してください";
+  }
+}
+
+/* ═══════════════ 学び方タブ ═══════════════ */
+
+function renderLearn() {
+  /* 今週できるようになったこと */
+  const wins = recentWins(S);
+  const wb = document.querySelector("#winsBox");
+  if (wb) {
+    wb.innerHTML = wins.length
+      ? wins.slice(0, 10).map((w) => `<div class="win"><span class="win-k ${w.kind === "直した" ? "fix" : "new"}">${esc(w.kind)}</span>
+          <b>${esc(w.name)}</b><span class="win-s">${esc(w.subject)}</span></div>`).join("")
+        + `<p class="cs" style="margin-top:10px">この1週間で <b>${wins.length}個</b>。
+           先週できなかったことが、今日できています。</p>`
+      : `<p class="cs">まだ記録が少ないので、来週ここに並びます。<br>
+         1つでも「できるようになった」が出ると、続きやすくなります。</p>`;
+  }
+
+  /* 勉強法クイズ */
+  const qb = document.querySelector("#quizBox");
+  if (qb) {
+    const i = METHOD_QUIZ.findIndex((_, n) => !(S.quizDone || {})[n]);
+    if (i < 0) {
+      qb.innerHTML = `<p class="cs">ぜんぶ答えました。<button class="linklike" id="quizReset">もう一度やる</button></p>`
+        + METHOD_QUIZ.map((q, n) => `<div class="qz-done"><b>${esc(q.q)}</b>
+            <p>→ ${esc(q.a[q.right])}<br><span class="qz-why">${esc(q.why)}</span></p></div>`).join("");
+      document.querySelector("#quizReset").onclick = () => { S.quizDone = {}; save(); renderLearn(); };
+    } else {
+      const q = METHOD_QUIZ[i];
+      qb.innerHTML = `<div class="qz">
+        <p class="qz-q">${esc(q.q)}</p>
+        ${q.a.map((t, n) => `<button class="qz-a" data-a="${n}">${esc(t)}</button>`).join("")}
+        <p class="cs" style="margin:8px 0 0">${i + 1} / ${METHOD_QUIZ.length}問目</p></div>`;
+      qb.querySelectorAll(".qz-a").forEach((b) => b.onclick = () => {
+        const chose = Number(b.dataset.a);
+        const right = chose === q.right;
+        (S.quizDone ||= {})[i] = chose; save();
+        qb.innerHTML = `<div class="qz">
+          <p class="qz-q">${esc(q.q)}</p>
+          <div class="qz-res ${right ? "ok" : "ng"}">${right ? "◎ そのとおり" : "△ 実は逆でした"}</div>
+          <p class="qz-why">${esc(q.why)}</p>
+          <button class="btn btn-sm" id="quizNext">次へ</button></div>`;
+        document.querySelector("#quizNext").onclick = renderLearn;
+      });
+    }
+  }
+
+  /* 学び方カード */
+  const mb = document.querySelector("#methodBox");
+  if (mb) {
+    mb.innerHTML = STUDY_METHODS.map((m) => {
+      const ev = m.evidence(S);
+      return `<div class="mth">
+        <div class="mth-h"><b>${esc(m.name)}</b><span class="mth-s">${esc(m.strength)}</span></div>
+        <div class="mth-ab">
+          <div class="mth-bad">✕ ${esc(m.bad)}</div>
+          <div class="mth-good">○ ${esc(m.good)}</div>
+        </div>
+        <p class="mth-why">${esc(m.why)}</p>
+        <div class="mth-ev ${ev ? "has" : ""}">
+          <b>沙和さんの記録では</b><br>${esc(ev ? ev.text : "まだ判断できるだけの記録がありません。続けるとここに出ます。")}
+          ${ev && ev.gap != null && ev.gap > 0 ? `<span class="mth-gap">差 ${ev.gap}ポイント</span>` : ""}
+        </div>
+        <p class="mth-src">出典:${esc(m.source)}</p>
+      </div>`;
+    }).join("");
+  }
+
+  /* 活動の型 */
+  const ab = document.querySelector("#actBox");
+  if (ab) {
+    const recent = new Set(recentActivities(S, 3).map((x) => x.id));
+    ab.innerHTML = ACTIVITIES.map((a) => `<button class="act ${recent.has(a.id) ? "used" : ""}" data-act="${a.id}">
+      <span class="act-e">${a.emoji}</span><b>${esc(a.name)}</b>
+      <span class="act-w">${esc(a.what)}</span>
+      ${recent.has(a.id) ? `<span class="act-tag">最近やった</span>` : ""}</button>`).join("");
+    ab.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => {
+      const a = ACT_MAP[b.dataset.act];
+      S.persona = "sensei"; renderPersona(); go("study");
+      send(`今日は「${a.name}」のやり方でお願いします。(${a.what})`);
+    });
+  }
+
+  /* 興味の段階 */
+  const pb = document.querySelector("#phaseBox");
+  if (pb) {
+    pb.innerHTML = ["math", "science", "english", "japanese", "social"].map((id) => {
+      const p = interestPhase(S, id);
+      return `<div class="ph">
+        <div class="ph-h"><b>${esc(SUBJECTS[id]?.name || id)}</b>
+          <span class="ph-n">${p.emoji} ${esc(p.name)}</span></div>
+        <div class="ph-bar">${[1, 2, 3, 4].map((n) => `<i class="${n <= p.n ? "on" : ""}"></i>`).join("")}</div>
+        <p class="ph-w">${esc(p.what)}</p>
+        <p class="ph-do"><b>いま効くこと:</b>${esc(p.doThis)}</p>
+      </div>`;
+    }).join("");
+  }
+}
+
+/* ═══════════════ APIの見える化 ═══════════════
+   「本当に動いているのか」がわからないと不安になる。
+   何が・どれだけ・いくらで動いたかを、そのつど残して見せる。 */
+
+function logApi(rec) {
+  (S.apiLog ||= []).push({ at: Date.now(), ...rec });
+  if (S.apiLog.length > 40) S.apiLog.shift();
+}
+
+function apiTotals(days = 30) {
+  const since = Date.now() - days * 864e5;
+  const rows = (S.apiLog || []).filter((r) => r.at >= since && r.ok);
+  return {
+    calls: rows.length,
+    yen: Math.round(rows.reduce((s, r) => s + (r.yen || 0), 0) * 10) / 10,
+    inTok: rows.reduce((s, r) => s + (r.in || 0), 0),
+    outTok: rows.reduce((s, r) => s + (r.out || 0), 0),
+    tools: rows.reduce((s, r) => s + (r.tools?.length || 0), 0),
+  };
+}
+
+/** 1回分の要約(チャットの下に出す小さな行) */
+function apiMetaLine(rec) {
+  const bits = [`${providerOf(rec.provider).short} ${rec.model}`];
+  bits.push(`${(rec.ms / 1000).toFixed(1)}秒`);
+  if (rec.tools?.length) bits.push(`ツール${rec.tools.length}回`);
+  if (rec.in || rec.out) bits.push(`${rec.in + rec.out}トークン`);
+  if (rec.yen != null) bits.push(`約${rec.yen < 0.1 ? "0.1未満" : rec.yen}円`);
+  return bits.join(" ・ ");
+}
+
+function renderApiPanel() {
+  const st = document.querySelector("#apiState");
+  if (!st) return;
+  const t = apiTotals(30);
+  const last = (S.apiLog || []).at(-1);
+  const okLast = last?.ok;
+  st.innerHTML = `
+    <div class="bk-notice ${last ? (okLast ? "ok" : "warn") : ""}">
+      <b>${last ? (okLast ? "✓ 動いています" : "⚠ 前回は失敗しました") : "まだ通信していません"}</b>
+      <p>${last ? `最後のやりとり:${new Date(last.at).toLocaleString("ja-JP")}<br>
+        ${okLast ? esc(apiMetaLine(last)) : esc(last.error || "")}` :
+        "学習タブで話しかけると、ここに記録が出ます。"}</p>
+    </div>
+    <div class="row-kv"><span>使っているAI</span><b>${esc(providerOf(S.provider).short)} / ${esc(curModel())}</b></div>
+    <div class="row-kv"><span>直近30日のやりとり</span><b>${t.calls} 回</b></div>
+    <div class="row-kv"><span>直近30日の概算料金</span><b>${t.yen ? "約" + t.yen + " 円" : "—"}</b></div>
+    <div class="row-kv"><span>AIが道具を使った回数</span><b>${t.tools} 回</b></div>
+    <p class="cs">「道具を使った回数」は、AIが記録の書き込みや前提の診断を実際に行った回数です。
+      ここが増えていれば、単に会話しているのではなく<b>学習データを更新しながら動いている</b>ということです。</p>`;
+
+  const box = document.querySelector("#apiLogBox");
+  const rows = (S.apiLog || []).slice(-12).reverse();
+  box.innerHTML = rows.length ? rows.map((r) => {
+    const d = new Date(r.at);
+    const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    return `<div class="api-row ${r.ok ? "" : "ng"}">
+      <span class="api-t">${hm}</span>
+      <span class="api-b">${r.ok ? esc(apiMetaLine(r)) : "✕ " + esc(r.error || "失敗")}
+        ${r.tools?.length ? `<span class="api-tools">${r.tools.map(esc).join(" → ")}</span>` : ""}</span>
+    </div>`;
+  }).join("") : `<p class="cs">まだ記録はありません。</p>`;
+}
+
+async function testApi() {
+  const btn = document.querySelector("#testApi");
+  const out = document.querySelector("#apiTestResult");
+  btn.disabled = true; btn.textContent = "確かめています…";
+  out.innerHTML = `<p class="cs">問い合わせ中…</p>`;
+  const t0 = Date.now();
+  try {
+    if (!curKey()) throw new Error("APIキーが設定されていません");
+    let reply = "";
+    const res = await sendToProvider({
+      provider: S.provider, model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
+      system: "あなたは日本語で答えます。",
+      messages: [{ role: "user", content: "『準備できました』とだけ返してください。" }],
+      tools: null,
+      onDelta: (t) => { reply += t; },
+    });
+    const ms = Date.now() - t0;
+    const u = res.usage || { in: 0, out: 0 };
+    const yen = usageYen(S.provider, curModel(), u);
+    const text = reply || res.content.find((b) => b.type === "text")?.text || "(返事なし)";
+    logApi({ ok: true, provider: S.provider, model: curModel(), ms, in: u.in, out: u.out, yen, tools: [], test: true });
+    save();
+    out.innerHTML = `<div class="bk-notice ok"><b>✓ つながりました</b>
+      <p>AIの返事:「${esc(text.trim().slice(0, 60))}」<br>
+        ${esc(providerOf(S.provider).short)} ${esc(curModel())} ・ ${(ms / 1000).toFixed(1)}秒
+        ・ ${u.in + u.out}トークン ${yen != null ? `・ 約${yen < 0.1 ? "0.1未満" : yen}円` : ""}</p></div>`;
+  } catch (e) {
+    logApi({ ok: false, provider: S.provider, model: curModel(), ms: Date.now() - t0,
+             error: e instanceof ApiError ? e.friendly() : String(e.message || e) });
+    save();
+    out.innerHTML = `<div class="bk-notice warn"><b>✕ つながりませんでした</b>
+      <p>${esc(e instanceof ApiError ? e.friendly() : String(e.message || e))}</p></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "接続を確かめる";
+    renderApiPanel();
   }
 }
 
