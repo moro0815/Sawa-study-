@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v32";
+const APP_VERSION = "v33";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -331,7 +331,15 @@ function daysSinceBackup() {
 }
 
 function mem(id) { return (S.mem[id] ||= newMemState(id)); }
-const today = () => new Date().toISOString().slice(0, 10);
+/* ★ここは UTC 基準の日付を返していた(toISOString をそのまま切っていた)。
+   一方 todayISO() は時差を補正している。日本時間の 0時〜9時のあいだ、
+   **2つが1日ずれる**ため、その時間に答えると
+     ・record_answer は「昨日」の欄に記録する(today)
+     ・todayAnswered / dayEnough は「今日」を見る(todayISO)
+   となり、やったのに「まだ」と表示され、
+   連続で使っていても「◯日ぶり」の復帰扱いになることがあった。
+   基準を todayISO() に一本化する。 */
+const today = () => todayISO();
 
 /** 今の学年の段階設定 */
 function stage() { return stageOf(S.grade); }
@@ -1129,7 +1137,7 @@ async function send(override) {
       addMsg("err", `${n.title}\n\nおうちの人に「沙和ナビ、こうしんおねがい」と伝えてください。\n記録は消えていません。書く練習はこのまま使えます。`);
       renderKidExpiry(); renderExpiry();
     } else {
-      addMsg("err", "⚠ " + (e instanceof ApiError ? e.friendly() : "通信エラーです。接続を確認してください。"));
+      addMsg("err", "⚠ " + scrubSecrets(e instanceof ApiError ? e.friendly() : "通信エラーです。接続を確認してください。", S));
     }
     if (broken) {
       // 送った内容(写真を含む)は消えていないので、押し直せばそのまま送れる
@@ -2442,6 +2450,8 @@ function renderExpiry() {
      止められるように見せないこと。代わりに、消えても困らない状態を作る。 */
 
 let persistState = { supported: false, granted: false };
+/** 最後に描いたときの日付。日付をまたいだら描き直すため */
+let lastRenderDay = todayISO();
 
 function renderSafety() {
   const box = $("#safeList");
@@ -2476,16 +2486,16 @@ function renderSafety() {
           persistState.quotaMB ? ` / 使える上限 約${persistState.quotaMB} MB` : ""}</p>` : "");
 }
 
+/* ★書き出しの実装を1本にする。
+   ここに別実装を置いたせいで、片方(こちら)だけ secrets=true になり、
+   APIキーごと iCloud に出ていた。同じことをする関数が2つあること自体が原因なので、
+   既存の shareBackup() に寄せる。 */
 async function safeExportNow() {
-  const r = await exportBackupFile(S, {
-    app: "sawa-navi", version: APP_VERSION, savedAt: new Date().toISOString(),
-    name: S.name, grade: S.grade, data: backupPayload(true, true),
-  });
-  if (r.how === "cancel") return;
-  S.lastBackupAt = Date.now(); save();
+  const r = await shareBackup();
+  if (r === "cancel") return;
   await srvBackup(true);          // ついでにサーバーにも預けておく
   renderSafety(); renderBackup();
-  toast(r.how === "share"
+  toast(r === "shared"
     ? "「ファイルに保存」→ iCloud Drive を選ぶと、Safariの外に残ります"
     : "ファイルに書き出しました");
 }
@@ -2712,7 +2722,11 @@ function init() {
   /* ★アプリを離れる瞬間に預ける。ここが実際にいちばん効く。
      「30分に1回」だと、直前の学習が丸ごと落ちることがある。 */
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && S.srvToken) srvBackup(true);
+    if (document.visibilityState === "hidden") { if (S.srvToken) srvBackup(true); return; }
+    /* ★戻ってきたとき、日付が変わっていたら描き直す。
+       アプリを開いたまま日付をまたぐと、期限も「今日やること」も
+       前の日のままだった(再描画のきっかけが無かった)。 */
+    if (lastRenderDay !== todayISO()) { lastRenderDay = todayISO(); renderAll(); }
   });
   window.addEventListener("pagehide", () => { if (S.srvToken) srvBackup(true); });
 
@@ -3762,7 +3776,9 @@ function startSayDrill(p) {
    何が・どれだけ・いくらで動いたかを、そのつど残して見せる。 */
 
 function logApi(rec) {
-  (S.apiLog ||= []).push({ at: Date.now(), ...rec });
+  // ★エラー文は提供元から返ってきた文字列。保存する前に鍵らしきものを伏せる
+  const safe = rec.error ? { ...rec, error: scrubSecrets(rec.error, S) } : rec;
+  (S.apiLog ||= []).push({ at: Date.now(), ...safe });
   if (S.apiLog.length > 40) S.apiLog.shift();
 }
 
@@ -3852,7 +3868,7 @@ async function testApi() {
              error: e instanceof ApiError ? e.friendly() : String(e.message || e) });
     save();
     out.innerHTML = `<div class="bk-notice warn"><b>✕ つながりませんでした</b>
-      <p>${esc(e instanceof ApiError ? e.friendly() : String(e.message || e))}</p></div>`;
+      <p>${esc(scrubSecrets(e instanceof ApiError ? e.friendly() : String(e.message || e), S))}</p></div>`;
   } finally {
     btn.disabled = false; btn.textContent = "接続を確かめる";
     renderApiPanel();
@@ -4062,7 +4078,7 @@ async function fetchModelList() {
       .map((m) => `<option value="${esc(m.id)}">${esc(m.label || "")}</option>`).join("");
     $("#settingsMsg").textContent = `${list.length}件のモデルを取得しました。モデル欄をタップすると選べます`;
   } catch (e) {
-    $("#settingsMsg").textContent = (e instanceof ApiError ? e.friendly() : String(e.message || e));
+    $("#settingsMsg").textContent = scrubSecrets(e instanceof ApiError ? e.friendly() : String(e.message || e), S);
   } finally {
     btn.disabled = false; btn.textContent = "使えるモデルの一覧を取得";
     setTimeout(() => ($("#settingsMsg").textContent = ""), 6000);

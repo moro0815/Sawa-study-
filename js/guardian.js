@@ -77,6 +77,25 @@ function detectAlerts(S) {
     say:"「どれから片づける? 一緒に順番決めよっか」" });
 
 
+  /* ★AIの使用期限。保護者タブの一覧にも出す。
+     期限のカードは下のほうにあるので、そこまで見ないと気づけなかった。
+     沙和さんの学習が止まる話なので、いちばん上の一覧に載せる。 */
+  if (typeof expiryStatus === "function") {
+    const ex = expiryStatus(S);
+    if (ex.state === "invalid") out.push({ level: "alert", icon: "🔑",
+      title: "AIのキーが提供元に拒否されました",
+      body: "いまAIとの会話は止まっています。提供元で新しいキーを作り、保護者タブの下の方にある設定に入れ直してください。沙和さんには「おうちの人に伝えてね」とだけ出ています。",
+      say: "" });
+    else if (ex.state === "expired") out.push({ level: "alert", icon: "⏳",
+      title: `AIの使用期限が ${-ex.days}日前 に切れました`,
+      body: "いまAIとの会話は止まっています(記録は消えていません)。提供元でキーを作り直して入れ直してください。書く練習は使えています。",
+      say: "" });
+    else if (ex.state === "today" || ex.state === "soon") out.push({ level: "warn", icon: "⏳",
+      title: ex.state === "today" ? "AIの使用期限は今日までです" : `AIの使用期限まで あと ${ex.days}日`,
+      body: "切れるとAIとの会話が止まります(記録は消えません)。都合のよいときにキーを入れ替えてください。",
+      say: "" });
+  }
+
   // 学習の中断
   if (last) {
     const gap = Math.floor((now - new Date(last.date).getTime()) / DAYMS);

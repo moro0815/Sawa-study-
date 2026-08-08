@@ -45,12 +45,19 @@ function setKeyExpiry(S, provider, iso) {
   return keyExpiry(S, p);
 }
 
-/** 今日から n 日後の YYYY-MM-DD */
+/** 今日から n 日後の YYYY-MM-DD(現地時間の日付) */
 function isoAfterDays(n) {
   const d = new Date();
-  d.setHours(12, 0, 0, 0);                 // 時差でずれないよう昼に寄せる
+  d.setHours(12, 0, 0, 0);
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return todayISO(d);                      // ★時差の補正はここに一本化する
+}
+
+/** 保存されている日付が壊れていないか */
+function validExpiry(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return false;
+  const t = new Date(iso + "T00:00:00").getTime();
+  return Number.isFinite(t);
 }
 
 /**
@@ -64,7 +71,10 @@ function expiryStatus(S, provider) {
   const invalid = !!(S.keyInvalid || {})[p];
 
   if (invalid) return { provider: p, state: "invalid", iso, days: null };
-  if (!iso) return { provider: p, state: "none", iso: "", days: null };
+  /* ★壊れた日付は「決めていない」扱いにする。
+     ここで黙って通すと、日付が壊れているのに state が "ok" になり、
+     保護が外れたことに誰も気づけない(静かに開く状態がいちばん危ない)。 */
+  if (!validExpiry(iso)) return { provider: p, state: "none", iso: "", days: null, broken: !!iso };
 
   const today = new Date(todayISO() + "T00:00:00").getTime();
   const end = new Date(iso + "T00:00:00").getTime();
@@ -168,6 +178,38 @@ function expiryParentNotice(S) {
     title: `AIの使用期限まで あと ${st.days}日(${st.iso})`,
     body: "期限が来たら、提供元でキーを作り直して入れ替えてください。",
   };
+}
+
+/* ── ログに鍵が混ざらないようにする ────────────────────
+   ★いまの実装では、鍵はすべて **HTTPヘッダ** で送っており、
+     URLには乗りません(x-api-key / x-goog-api-key / authorization)。
+     errorFrom() も本文全部ではなく error.message だけを取り出します。
+     したがって現状の経路で漏れる可能性は低いのですが、
+
+     ・提供元が本文に鍵を書き返してくる可能性は否定できない
+     ・「OpenAI互換」は提供元を保護者が自由に選べる
+     ・S.apiLog は**サーバーのひかえとファイル書き出しに乗る**
+
+     ので、保存する前にそれらしい文字列を伏せます。安いわりに効きます。 */
+
+const SECRET_PATTERNS = [
+  /\bsk-[A-Za-z0-9_-]{16,}/g,          // OpenAI / OpenRouter / DeepSeek
+  /\bsk-ant-[A-Za-z0-9_-]{16,}/g,      // Anthropic
+  /\bAIza[A-Za-z0-9_-]{20,}/g,         // Google
+  /\bBearer\s+[A-Za-z0-9._-]{16,}/gi,
+  /[?&](key|api_?key|access_token)=[^&\s"']+/gi,
+];
+
+/** エラー文などを保存・表示する前に通す */
+function scrubSecrets(text, S) {
+  let t = String(text ?? "");
+  for (const re of SECRET_PATTERNS) t = t.replace(re, "[伏せました]");
+  // いま持っている実物とも突き合わせる(形の違う提供元に備えて)
+  for (const k of Object.values((S && S.apiKeys) || {})) {
+    if (k && k.length >= 12) t = t.split(k).join("[伏せました]");
+  }
+  if (S && S.srvToken && S.srvToken.length >= 12) t = t.split(S.srvToken).join("[伏せました]");
+  return t;
 }
 
 /** AIに渡す。期限のことを沙和さんに難しく説明させないため */

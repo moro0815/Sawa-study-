@@ -125,33 +125,10 @@ function safetyReport(S) {
 
 /* ── 端末の外へ出す ────────────────────────────────────── */
 
-/**
- * ★iOS では「共有」から **ファイルに保存 → iCloud Drive** に置けます。
- *   iCloud Drive は Safari の管理外なので、
- *   「Webサイトデータを消去」でも、端末を初期化しても残ります。
- *   共有が使えない環境では、ふつうのダウンロードに落とします。
- */
-async function exportBackupFile(S, payload) {
-  const text = JSON.stringify(payload, null, 1);
-  const name = `沙和ナビ_${S.name || "記録"}_${new Date().toISOString().slice(0, 10)}.json`;
-  const file = new File([text], name, { type: "application/json" });
-
-  if (navigator.canShare?.({ files: [file] }) && navigator.share) {
-    try {
-      await navigator.share({ files: [file], title: name });
-      return { how: "share" };
-    } catch (e) {
-      if (e && e.name === "AbortError") return { how: "cancel" };
-    }
-  }
-  const blob = new Blob([text], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  return { how: "download" };
-}
+/* ★書き出し処理はここに二重に持たない。
+   app.js の shareBackup() が同じことをしており、そちらは secrets=false。
+   ここに別実装を置いたせいで、片方だけ鍵ごと書き出していた。
+   実装は shareBackup() に一本化した(この関数は削除)。 */
 
 /* ── 復元用リンク ──────────────────────────────────────
    ★全部消えると、サーバーの合言葉も一緒に消えます。
