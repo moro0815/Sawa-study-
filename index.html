@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#ff9d6c">
+<title>さわの勉強部屋 🐾 AI家庭教師</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐾</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ヘッダー -->
+<header class="app-header">
+  <div class="header-left">
+    <span class="logo">🐾</span>
+    <div class="header-title">
+      <h1>さわの勉強部屋</h1>
+      <p class="header-sub">獣医さんへの道</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="streak-badge" id="streakBadge" title="連続学習日数">🔥 <span id="streakCount">0</span>日</div>
+    <div class="xp-badge" id="xpBadge">⭐ <span id="xpCount">0</span> XP</div>
+  </div>
+</header>
+
+<!-- メイン -->
+<main id="mainArea">
+
+  <!-- ====== ホーム画面 ====== -->
+  <section id="screen-home" class="screen active">
+    <div class="card greeting-card">
+      <div class="greeting-emoji" id="greetingEmoji">🐰</div>
+      <div>
+        <p class="greeting-text" id="greetingText">こんにちは!</p>
+        <p class="greeting-sub" id="greetingSub">今日も一緒にがんばろう!</p>
+      </div>
+    </div>
+
+    <div class="card level-card">
+      <div class="level-head">
+        <span class="level-title" id="levelTitle">どうぶつ見習い</span>
+        <span class="level-num" id="levelNum">Lv.1</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="levelProgress"></div></div>
+      <p class="level-next" id="levelNext">次のレベルまで 100 XP</p>
+      <div class="vet-road">
+        <span>🌱</span><span>─</span><span>🐹</span><span>─</span><span>🐕</span><span>─</span><span>🏥</span><span>─</span><span class="vet-goal">👩‍⚕️獣医さん!</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">📋 今日のミッション</h2>
+      <ul class="mission-list" id="missionList"></ul>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">🦁 どうぶつ図鑑 <span class="collection-count" id="collectionCount"></span></h2>
+      <div class="animal-preview" id="animalPreview"></div>
+      <button class="btn-secondary" data-goto="zukan">図鑑を見る</button>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">📊 教科べつのがんばり</h2>
+      <div id="subjectStats"></div>
+    </div>
+
+    <button class="btn-primary btn-big" data-goto="study">✏️ 勉強をはじめる!</button>
+  </section>
+
+  <!-- ====== 勉強(チャット)画面 ====== -->
+  <section id="screen-study" class="screen">
+    <div class="subject-bar" id="subjectBar"></div>
+
+    <div class="chat-area" id="chatArea">
+      <div class="chat-welcome" id="chatWelcome">
+        <p>🐰 こんにちは!ミミ先生だよ。</p>
+        <p>わからない問題があったら、なんでも聞いてね。<br>宿題や問題集は <b>📷 写真</b> でおくってくれてもOK!</p>
+      </div>
+    </div>
+
+    <div class="quick-actions">
+      <button class="chip-action" id="btnQuiz">🎯 クイズに挑戦</button>
+      <button class="chip-action" id="btnExplain">💡 今日の授業の復習</button>
+      <button class="chip-action" id="btnHomework">📝 宿題を一緒にやる</button>
+    </div>
+
+    <div class="input-bar">
+      <label class="photo-btn" title="写真をおくる">
+        📷<input type="file" id="photoInput" accept="image/*" hidden>
+      </label>
+      <textarea id="chatInput" rows="1" placeholder="質問をかいてね…"></textarea>
+      <button id="sendBtn" class="send-btn" title="送信">➤</button>
+    </div>
+    <div class="photo-preview" id="photoPreview" hidden>
+      <img id="previewImg" alt="アップロードする写真">
+      <button id="removePhoto">✕</button>
+    </div>
+  </section>
+
+  <!-- ====== 図鑑画面 ====== -->
+  <section id="screen-zukan" class="screen">
+    <div class="card">
+      <h2 class="card-title">🦁 どうぶつ図鑑</h2>
+      <p class="zukan-desc">勉強してXPをためると、新しいどうぶつが仲間になるよ!<br>獣医さんになったら、みんなを助けてあげてね。</p>
+      <div class="animal-grid" id="animalGrid"></div>
+    </div>
+  </section>
+
+  <!-- ====== 設定画面 ====== -->
+  <section id="screen-settings" class="screen">
+    <div class="card">
+      <h2 class="card-title">⚙️ 設定(おうちの人向け)</h2>
+      <label class="field-label">Claude APIキー
+        <input type="password" id="apiKeyInput" placeholder="sk-ant-api03-...">
+      </label>
+      <p class="field-help">APIキーは <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a> で取得できます。キーはこの端末のブラウザ内にのみ保存されます。</p>
+      <label class="field-label">お子さんの名前(よびかけに使います)
+        <input type="text" id="nameInput" placeholder="さわ">
+      </label>
+      <button class="btn-primary" id="saveSettings">保存する</button>
+      <p id="settingsMsg" class="settings-msg"></p>
+    </div>
+    <div class="card">
+      <h2 class="card-title">🗑️ データ管理</h2>
+      <button class="btn-danger" id="resetChat">会話履歴をリセット</button>
+      <button class="btn-danger" id="resetAll">すべてのデータをリセット</button>
+    </div>
+  </section>
+</main>
+
+<!-- 下部ナビ -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-goto="home"><span>🏠</span>ホーム</button>
+  <button class="nav-btn" data-goto="study"><span>✏️</span>べんきょう</button>
+  <button class="nav-btn" data-goto="zukan"><span>🦁</span>ずかん</button>
+  <button class="nav-btn" data-goto="settings"><span>⚙️</span>せってい</button>
+</nav>
+
+<!-- お祝いオーバーレイ -->
+<div class="celebrate" id="celebrate" hidden>
+  <div class="celebrate-box">
+    <div class="celebrate-emoji" id="celebrateEmoji">🎉</div>
+    <p class="celebrate-title" id="celebrateTitle"></p>
+    <p class="celebrate-sub" id="celebrateSub"></p>
+    <button class="btn-primary" id="celebrateClose">やったー!</button>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
