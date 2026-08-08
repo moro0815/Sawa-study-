@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v28";
+const APP_VERSION = "v29";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -2368,6 +2368,119 @@ function renderPatterns() {
     : "";
 }
 
+/* ── 記録を失わないための守り ──────────────────────────
+   ★「Webサイトデータを消去」は止められない。止められないものを
+     止められるように見せないこと。代わりに、消えても困らない状態を作る。 */
+
+let persistState = { supported: false, granted: false };
+
+function renderSafety() {
+  const box = $("#safeList");
+  if (!box) return;
+  const rep = safetyReport(S);
+  // 保護の申請結果を差しこむ
+  const pl = rep.layers.find((l) => l.id === "persist");
+  pl.ok = persistState.supported ? persistState.granted : null;
+  if (!persistState.supported) {
+    pl.bad = "このブラウザは保護の申請に対応していません(動作には影響しません)";
+  }
+
+  const done = rep.layers.filter((l) => l.ok === true).length;
+  $("#safeNote").textContent = `${done} / ${rep.layers.length}`;
+
+  const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  box.innerHTML =
+    (rep.naked
+      ? `<div class="bk-notice warn"><b>⚠ いま、端末の外に記録がありません</b>
+          <p>この状態で「Webサイトデータを消去」されると、<b>すべて失われます。</b>
+             下の「いますぐ端末の外に出す」を1回押してください。</p></div>`
+      : `<div class="bk-notice ok"><b>✓ ${rep.offDeviceDays === 0 ? "今日" : rep.offDeviceDays + "日前"}の記録が端末の外にあります</b>
+          <p>いま消去されても、ここまで戻せます。</p></div>`) +
+    rep.layers.map((l) => `
+      <div class="sf ${l.ok === true ? "ok" : l.ok === null ? "na" : "ng"}">
+        <span class="sf-i">${l.ok === true ? "✓" : l.ok === null ? "—" : "!"}</span>
+        <div class="sf-t"><b>${esc(l.title)}</b>
+          <span>${md(l.ok === true ? l.good : l.bad)}</span></div>
+      </div>`).join("") +
+    (persistState.usedMB != null
+      ? `<p class="cs">いま使っている容量:<b>${persistState.usedMB} MB</b>${
+          persistState.quotaMB ? ` / 使える上限 約${persistState.quotaMB} MB` : ""}</p>` : "");
+}
+
+async function safeExportNow() {
+  const r = await exportBackupFile(S, {
+    app: "sawa-navi", version: APP_VERSION, savedAt: new Date().toISOString(),
+    name: S.name, grade: S.grade, data: backupPayload(true, true),
+  });
+  if (r.how === "cancel") return;
+  S.lastBackupAt = Date.now(); save();
+  await srvBackup(true);          // ついでにサーバーにも預けておく
+  renderSafety(); renderBackup();
+  toast(r.how === "share"
+    ? "「ファイルに保存」→ iCloud Drive を選ぶと、Safariの外に残ります"
+    : "ファイルに書き出しました");
+}
+
+function showRestoreKey() {
+  const box = $("#safeKeyBox");
+  const url = restoreLink(S);
+  box.hidden = false;
+  if (!url) {
+    box.innerHTML = `<div class="bk-notice warn"><b>まだ作れません</b>
+      <p>先に、下の「サーバーへの自動バックアップ」を始めてください。1回押すだけです。</p></div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="bk-notice warn"><b>⚠ これはパスワードと同じものです</b>
+      <p>このリンクを開くと、預けてある学習記録を取り出せます。
+        <b>ご家族以外に渡さないでください。</b>
+        (AIのAPIキーは入っていません。料金には影響しません)</p></div>
+    <p class="cs"><b>なぜ必要か:</b> 全部消えると、サーバーの合言葉も一緒に消えます。
+      預けてあるのに<b>取りに行く鍵が無い</b>状態になります。このリンクがその鍵です。</p>
+    <textarea class="inp safe-key" id="safeKeyText" rows="3" readonly>${esc(url)}</textarea>
+    <div class="safe-btns">
+      <button class="btn btn-sm" id="safeKeyCopy">コピー</button>
+      <button class="btn btn-sm btn-ghost" id="safeKeyShare">メモやメールに送る</button>
+    </div>
+    <p class="cs">おすすめの保管先:<b>iPhoneの「メモ」アプリ</b>、または<b>自分あてのメール</b>。
+      新しい端末でこのリンクを開けば、そのまま復元できます。</p>`;
+  $("#safeKeyCopy").onclick = async () => {
+    try { await navigator.clipboard.writeText(url); toast("コピーしました"); }
+    catch (_) { $("#safeKeyText").select(); toast("長押しでコピーしてください"); }
+  };
+  $("#safeKeyShare").onclick = async () => {
+    try { await navigator.share({ title: "沙和ナビ 復元用リンク", text: url }); }
+    catch (_) { toast("この端末では共有が使えません。コピーしてください"); }
+  };
+}
+
+/** 起動時。#restore= 付きで開かれたら復元する */
+async function tryRestoreFromLink() {
+  const o = readRestoreLink();
+  if (!o) return;
+  clearRestoreHash();
+  const hasData = Object.keys(S.mem || {}).length > 0 || (S.sessions || []).length > 0;
+  const msg = hasData
+    ? "復元用リンクで開かれました。\n\nこの端末にはすでに記録があります。\nサーバーに預けてある記録を読み込みますか?\n(いまの記録は、読み込む前に自動でひかえを取ります)"
+    : "復元用リンクで開かれました。\n\nサーバーに預けてある記録を読み込みますか?";
+  if (!confirm(msg)) return;
+  S.srvToken = o.t;
+  if (o.n && !S.name) S.name = o.n;
+  if (o.g && !S.grade) S.grade = o.g;
+  save();
+  try {
+    const list = await srvFetch("list");
+    const items = list?.items || [];
+    if (!items.length) { alert("サーバーに預けた記録が見つかりませんでした。"); return; }
+    const txt = await srvFetch("get", { query: "&f=" + encodeURIComponent(items[0].file), raw: true });
+    applyBackupText(txt);
+    renderAll();
+    alert("復元しました。おかえりなさい。");
+  } catch (e) {
+    alert("読み込めませんでした:" + (e.message || e));
+  }
+}
+
 /* ── 生データ ────────────────────────────────────────
    ★3層に分けている理由を、画面でも見えるようにしておく。
      「作り直せます」は、実際に作り直すボタンが無いと信用できない。 */
@@ -2401,6 +2514,7 @@ function renderParent() {
   renderKarte();
   renderPatterns();
   renderRawInfo();
+  renderSafety();
 
   /* 今週の一言 */
   const adv = guardianAdvice(S);
@@ -2516,6 +2630,21 @@ function init() {
     renderRawInfo();
   });
 
+  /* ★保存の保護を申請する。防げるのは「勝手に消されること」だけで、
+     手動の「Webサイトデータを消去」は防げない。そこは画面に正直に書く。 */
+  askPersist().then((p) => { persistState = p; renderSafety(); });
+
+  /* ★復元用リンクで開かれたら、そこから戻す。
+     全部消えると合言葉も消えるので、この入口が無いと預けた記録に届かない。 */
+  tryRestoreFromLink();
+
+  /* ★アプリを離れる瞬間に預ける。ここが実際にいちばん効く。
+     「30分に1回」だと、直前の学習が丸ごと落ちることがある。 */
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && S.srvToken) srvBackup(true);
+  });
+  window.addEventListener("pagehide", () => { if (S.srvToken) srvBackup(true); });
+
   takeBackup();                     // 1日1回、端末内にひかえを取る
   applyTheme(themeId());
 
@@ -2548,6 +2677,10 @@ function init() {
   $("#msGo").onclick = () => startToday(planMode);
   $("#msMini").onclick = () => { planMode = planMode === "mini" ? null : "mini"; renderMission(); };
   $("#msWrite").onclick = () => openWritePad("kanji");
+
+  // 記録の守り
+  $("#safeNow").onclick = safeExportNow;
+  $("#safeKey").onclick = showRestoreKey;
 
   // 生データ
   $("#rawRecalc").onclick = () => {

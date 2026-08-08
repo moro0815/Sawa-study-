@@ -556,7 +556,20 @@
     <div id="subjectBreakdown"></div>
   </div>
 
-  <div class="card" id="cardRaw">
+    <div class="card" id="cardSafety">
+    <h2 class="ct">▶ 記録を失わないために <span class="ct-note" id="safeNote"></span></h2>
+    <p class="cs"><b>Safariの「Webサイトデータを消去」を止める方法はありません。</b>
+      localStorage も IndexedDB も、まとめて消えます。ブラウザにそれを拒否する仕組みが無いためです。<br>
+      なので<b>「消えても困らないようにする」</b>方向で守っています。いまの状態です。</p>
+    <div id="safeList"></div>
+    <div class="safe-btns">
+      <button class="btn btn-primary btn-sm" id="safeNow">いますぐ端末の外に出す</button>
+      <button class="btn btn-ghost btn-sm" id="safeKey">復元用リンクを作る</button>
+    </div>
+    <div id="safeKeyBox" hidden></div>
+  </div>
+
+<div class="card" id="cardRaw">
     <h2 class="ct">▶ 生データ <span class="ct-note" id="rawNote"></span></h2>
     <p class="cs">1問ごとの<b>問題ID・答えた内容・正誤・確信度・回答時間・端末・日時</b>を、
       <b>消さずに</b>ためています。いま画面に出ている習得度や苦手の分析は、
@@ -806,6 +819,7 @@
   <p class="wp-note" id="wpNote"></p>
 </div>
 
+<script src="js/safe.js"></script>
 <script src="js/rawlog.js"></script>
 <script src="js/write.js"></script>
 <script src="js/today.js"></script>
