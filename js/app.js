@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v31";
+const APP_VERSION = "v32";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -61,6 +61,8 @@ const defaults = () => ({
   parentPeriod: 7,
   lastBackupAt: null,        // 端末の外へ書き出した最後の日時
   srvToken: "",              // サーバー自動バックアップの合言葉
+  keyExpiry: {},             // AIの使用期限 {provider: "YYYY-MM-DD"}。expiry.js
+  keyInvalid: {},            // 提供元に拒否されたキー {provider: true}
   srvLastAt: null,           // 最後にサーバーへ預けた日時
   srvLastError: "",
   personaPinned: false,   // 自分で相手を選んだか(選んだら勝手に切り替えない)
@@ -987,6 +989,14 @@ async function send(override) {
   const text = (override ?? inp.value).trim();
   if (!text && !pendingFiles.length) return;
   if (!curKey()) { addMsg("err", "APIキーが未設定です。「保護者」タブで設定してください。"); go("parent"); return; }
+  /* ★期限切れ・拒否されたキーでは送らない。ここで止めるのが安全のねらい。
+     ただし「何もできない画面」にはしない(下の案内で書く練習へ逃がす)。 */
+  if (!keyUsable(S)) {
+    const n = expiryChildNotice(S);
+    addMsg("err", `${n.title}\n\nおうちの人に「沙和ナビ、こうしんおねがい」と伝えてください。`);
+    renderKidExpiry();
+    return;
+  }
 
   busy = true;
   markAnswered();          // ★AIの問いかけから、ここまでの時間を回答時間として拾う
@@ -1048,6 +1058,7 @@ async function send(override) {
         karteBlock: kartePromptBlock(S),
         todayBlock: todayPromptBlock(S),
         writeBlock: writePromptBlock(S),
+        expiryBlock: expiryPromptBlock(S),
         transferBlock: transferPromptBlock(S),
         causeBlock: causePromptBlock(S),
       }, statusSummary()),
@@ -1109,7 +1120,17 @@ async function send(override) {
       S.apiMessages = repairPairs(S.apiMessages);
     }
 
-    addMsg("err", "⚠ " + (e instanceof ApiError ? e.friendly() : "通信エラーです。接続を確認してください。"));
+    /* ★提供元にキーを拒否された(401/403)= 実質の期限切れ。
+       沙和さんには「APIキーが正しくありません」ではなく、
+       できること(おうちの人に伝える)だけを出す。 */
+    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+      markKeyInvalid(S); save();
+      const n = expiryChildNotice(S);
+      addMsg("err", `${n.title}\n\nおうちの人に「沙和ナビ、こうしんおねがい」と伝えてください。\n記録は消えていません。書く練習はこのまま使えます。`);
+      renderKidExpiry(); renderExpiry();
+    } else {
+      addMsg("err", "⚠ " + (e instanceof ApiError ? e.friendly() : "通信エラーです。接続を確認してください。"));
+    }
     if (broken) {
       // 送った内容(写真を含む)は消えていないので、押し直せばそのまま送れる
       const el = $("#chat").lastElementChild;
@@ -1282,6 +1303,7 @@ function fileToBase64(file) {
 /* ═══════════════ 描画 ═══════════════ */
 
 function renderAll() {
+  renderKidExpiry();
   renderLuke();
   renderHomework();
   renderLearn();
@@ -2369,6 +2391,52 @@ function renderPatterns() {
     : "";
 }
 
+/* ── AIの使用期限 ────────────────────────────────────
+   ★沙和さんの画面には「API」「キー」を1文字も出さない。
+     12歳に「APIキーの有効期限が切れました」と言っても、できることは無い。
+     できるのは「おうちの人に伝えること」だけなので、そう言わせる。 */
+
+function renderKidExpiry() {
+  const n = expiryChildNotice(S);
+  for (const id of ["#kidExpiry", "#kidExpiryChat"]) {
+    const el = $(id);
+    if (!el) continue;
+    if (!n) { el.hidden = true; el.innerHTML = ""; continue; }
+    el.hidden = false;
+    el.className = (id === "#kidExpiry" ? "card kidnote " : "kidnote ") + n.level;
+    el.innerHTML = `
+      <div class="kn-head">${lukeFace(40)}
+        <div><b>${esc(n.title)}</b><p class="kn-luke">${esc(n.luke)}</p></div></div>
+      <p class="kn-b">${n.body}</p>
+      ${n.still ? `<p class="kn-s">${n.still}</p>` : ""}
+      ${n.level === "stop" ? `<button class="btn btn-sm kn-go" id="kidExpGo${id === "#kidExpiry" ? "H" : "C"}">✍️ 書く練習をする</button>` : ""}`;
+    const go = el.querySelector("[id^=kidExpGo]");
+    if (go) go.onclick = () => openWritePad("kanji");
+  }
+}
+
+function renderExpiry() {
+  const box = $("#expState");
+  if (!box) return;
+  const st = expiryStatus(S);
+  const n = expiryParentNotice(S);
+  const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+
+  box.innerHTML = `<div class="bk-notice ${n.level === "ok" ? "ok" : "warn"}">
+    <b>${n.level === "alert" ? "⚠ " : ""}${esc(n.title)}</b><p>${md(n.body)}</p></div>`;
+
+  $("#expDate").value = st.iso || "";
+  $("#expQuick").innerHTML = EXPIRY_PRESETS.map((x) =>
+    `<button class="exp-q" data-expd="${x.d}">${esc(x.label)}</button>`).join("");
+  $$("[data-expd]").forEach((b) => b.onclick = () => {
+    const d = Number(b.dataset.expd);
+    setKeyExpiry(S, null, d ? isoAfterDays(d) : "");
+    clearKeyInvalid(S);
+    save(); renderExpiry(); renderKidExpiry(); renderAll();
+    toast(d ? `${isoAfterDays(d)} までにしました` : "期限なしにしました");
+  });
+}
+
 /* ── 記録を失わないための守り ──────────────────────────
    ★「Webサイトデータを消去」は止められない。止められないものを
      止められるように見せないこと。代わりに、消えても困らない状態を作る。 */
@@ -2516,6 +2584,7 @@ function renderParent() {
   renderPatterns();
   renderRawInfo();
   renderSafety();
+  renderExpiry();
 
   /* 今週の一言 */
   const adv = guardianAdvice(S);
@@ -2680,6 +2749,15 @@ function init() {
   $("#msMini").onclick = () => { planMode = planMode === "mini" ? null : "mini"; renderMission(); };
   $("#msWrite").onclick = () => openWritePad("kanji");
 
+  // AIの使用期限
+  $("#expSave").onclick = () => {
+    const v = $("#expDate").value;
+    if (!v) { toast("日付を選んでください"); return; }
+    setKeyExpiry(S, null, v); clearKeyInvalid(S);
+    save(); renderExpiry(); renderKidExpiry(); renderAll();
+    toast(`${v} までにしました`);
+  };
+
   // 記録の守り
   $("#safeNow").onclick = safeExportNow;
   $("#safeKey").onclick = showRestoreKey;
@@ -2818,7 +2896,10 @@ function init() {
 
   // 設定保存
   $("#saveSettings").onclick = () => {
+    const prevKey = S.apiKeys[S.provider];
     S.apiKeys[S.provider] = $("#apiKey").value.trim();
+    // ★キーを入れ替えたら、拒否の印を消す(入れ直したのに止まったままだと詰む)
+    if (S.apiKeys[S.provider] !== prevKey) clearKeyInvalid(S);
     S.model = $("#model").value.trim();
     if (curProvider().needsBaseUrl) S.baseUrl = $("#baseUrl").value.trim();
     S.name = $("#pName").value.trim() || "沙和";

@@ -77,6 +77,8 @@
 <!-- ══════════ ホーム ══════════ -->
 <section id="s-home" class="screen active">
 
+  <div class="card kidnote" id="kidExpiry" hidden></div>
+
   <!-- ★開いた瞬間に見える1枚。ここで迷わせない。
        教科選択 → 単元選択 → 問題選択 を毎回させないための card。 -->
   <div class="card mission" id="cardMission">
@@ -185,6 +187,7 @@
 
 <!-- ══════════ 学習(チャット) ══════════ -->
 <section id="s-study" class="screen">
+  <div class="kidnote" id="kidExpiryChat" hidden></div>
   <div class="persona-bar" id="personaBar"></div>
   <div class="luke-mini" id="lukeMini" hidden></div>
   <div class="timerbar" id="timerBar"><span id="timerText">学習時間 00:00</span><button id="timerBtn" class="timer-btn">▶ 計測開始</button></div>
@@ -695,6 +698,21 @@
     <p class="cs">キーはこの端末のブラウザ内にのみ保存されます。AIごとに別々に覚えるので、切り替えても入れ直す必要はありません。</p>
     <p class="cs" id="cspNote"></p>
 
+    <div class="exp-box" id="expBox">
+      <h3 class="sub-h">AIの使用期限</h3>
+      <p class="cs">期限を決めておくと、<b>定期的にキーを作り直すきっかけ</b>になります。
+        端末をなくしたときや、知らないうちに使われていたときに、<b>被害を期間で区切れます</b>。</p>
+      <div id="expState"></div>
+      <div class="exp-row">
+        <input type="date" id="expDate" class="inp">
+        <button class="btn btn-sm" id="expSave">この日にする</button>
+      </div>
+      <div class="exp-quick" id="expQuick"></div>
+      <p class="cs"><b>⚠ 大事なこと:</b> ここで日付を入れても、<b>AI会社側のキーが自動で止まるわけではありません。</b>
+        このアプリが「その日が来たら送信を止めて、入れ替えを促す」だけです。<br>
+        <b>本当に安全になるのは、提供元でキーを作り直した瞬間です。</b>期限は、そのための忘れない仕掛けです。</p>
+    </div>
+
     <div class="note-box">
       <b>安いAIに替えると、何が変わるか</b>
       <p>会話・出題・記録・写真の読み取りは、どのAIでも同じように動きます。ただし<b>安いモデルほど、次の3つが弱くなる傾向</b>があります。
@@ -819,6 +837,7 @@
   <p class="wp-note" id="wpNote"></p>
 </div>
 
+<script src="js/expiry.js"></script>
 <script src="js/safe.js"></script>
 <script src="js/rawlog.js"></script>
 <script src="js/write.js"></script>

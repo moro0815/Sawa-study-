@@ -677,6 +677,7 @@ ${profile.lukeBlock || ""}
 ${profile.englishBlock || ""}
 ${profile.todayBlock || ""}
 ${profile.writeBlock || ""}
+${profile.expiryBlock || ""}
 ${profile.karteBlock || ""}
 ${profile.transferBlock || ""}
 ${profile.causeBlock || ""}
