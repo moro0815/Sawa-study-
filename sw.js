@@ -1,5 +1,5 @@
 /* オフラインでも開けるように。APIへの通信はキャッシュしない */
-const CACHE = "sawa-navi-v8";
+const CACHE = "sawa-navi-v9";
 const ASSETS = [
   "./", "./index.html", "./share.html", "./manifest.json",
   "./css/style.css",
@@ -20,8 +20,9 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (url.origin !== location.origin) return;           // APIは触らない
+  if (url.origin !== location.origin) return;           // 外部APIは触らない
   if (e.request.method !== "GET") return;
+  if (url.pathname.includes("/api/")) return;           // バックアップ受け口はキャッシュしない
   e.respondWith(
     fetch(e.request).then((res) => {
       const copy = res.clone();

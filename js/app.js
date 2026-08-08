@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v8";
+const APP_VERSION = "v9";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -48,6 +48,9 @@ const defaults = () => ({
   costSchool: "hokudai",
   parentPeriod: 7,
   lastBackupAt: null,        // 端末の外へ書き出した最後の日時
+  srvToken: "",              // サーバー自動バックアップの合言葉
+  srvLastAt: null,           // 最後にサーバーへ預けた日時
+  srvLastError: "",
   pendingConf: null,
   lastConf: null,
 });
@@ -79,7 +82,11 @@ function curBaseUrl() { return S.baseUrl || curProvider().defaultBaseUrl || ""; 
 let lastAutoBackup = 0;
 function save() {
   // 5分に1回、その日のひかえを最新の状態に更新する
-  if (Date.now() - lastAutoBackup > 5 * 60000) { lastAutoBackup = Date.now(); try { takeBackup(); } catch (_) {} }
+  if (Date.now() - lastAutoBackup > 5 * 60000) {
+    lastAutoBackup = Date.now();
+    try { takeBackup(); } catch (_) {}
+    try { scheduleServerBackup(); } catch (_) {}
+  }
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (_) {
     S.chat = S.chat.slice(-30); S.apiMessages = S.apiMessages.slice(-20);
@@ -94,9 +101,16 @@ function save() {
      3. iCloud等に保存できるファイルを書き出す(共有シート)
    会話履歴は容量を食うわりに失っても困らないので、ひかえには入れない。 */
 
-function backupPayload() {
+/**
+ * ひかえに入れる中身。
+ * secrets:false のときは APIキーと合言葉を外す。
+ * 端末の外(ファイル・サーバー)へ出すものに認証情報を混ぜないため。
+ */
+function backupPayload(secrets = true) {
   const { chat, apiMessages, ...rest } = S;
-  return rest;
+  if (secrets) return rest;
+  const { apiKeys, srvToken, ...safe } = rest;
+  return safe;
 }
 
 function loadBackups() {
@@ -146,7 +160,7 @@ function restoreBackup(i) {
 function backupFile() {
   return JSON.stringify({
     app: "sawa-navi", version: APP_VERSION, savedAt: new Date().toISOString(),
-    name: S.name, grade: S.grade, data: backupPayload(),
+    name: S.name, grade: S.grade, data: backupPayload(false),
   }, null, 2);
 }
 
@@ -177,8 +191,78 @@ function applyBackupText(txt) {
   const data = (j && j.app === "sawa-navi" && j.data) ? j.data : j;
   if (!data || typeof data !== "object" || !("mem" in data)) throw new Error("形式が違います");
   takeBackup("読み込み前");
+  const keys = S.apiKeys, tok = S.srvToken;      // 認証情報は今のものを引き継ぐ
   S = { ...defaults(), ...data, chat: [], apiMessages: [] };
+  if (!Object.keys(S.apiKeys || {}).length) S.apiKeys = keys;
+  if (!S.srvToken) S.srvToken = tok;
   save();
+}
+
+/* ── サーバーへの自動バックアップ ────────────────────────
+   エックスサーバーに api/backup.php を置いてあるときだけ動く。
+   端末がこわれても機種変更しても記録が残るよう、静かに預ける。 */
+
+function srvUrl() {
+  return location.href.replace(/[^/]*$/, "") + "api/backup.php";
+}
+
+async function srvFetch(action, opts = {}) {
+  const res = await fetch(`${srvUrl()}?a=${action}${opts.query || ""}`, {
+    method: opts.body ? "POST" : "GET",
+    headers: { ...(S.srvToken ? { "X-Sawa-Token": S.srvToken } : {}),
+               ...(opts.body ? { "content-type": "application/json" } : {}) },
+    body: opts.body,
+    cache: "no-store",
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (_) {}
+  if (!res.ok) throw new Error(json?.error || `サーバーが応答しません (${res.status})`);
+  return opts.raw ? text : json;
+}
+
+/** 置いてあるかどうかの確認 */
+async function srvPing() {
+  try { const j = await srvFetch("ping"); return j?.version ? j : null; }
+  catch (_) { return null; }
+}
+
+/** 初回設定。合言葉をサーバーに作ってもらって受け取る */
+async function srvSetup() {
+  const j = await srvFetch("init");
+  S.srvToken = j.token; S.srvLastError = ""; save();
+  return j.token;
+}
+
+/** 預ける。失敗しても画面の邪魔をしない */
+async function srvBackup(silent = true) {
+  if (!S.srvToken) return false;
+  try {
+    const body = JSON.stringify({
+      app: "sawa-navi", version: APP_VERSION, savedAt: new Date().toISOString(),
+      name: S.name, grade: S.grade, data: backupPayload(false),
+    });
+    await srvFetch("save", { body });
+    S.srvLastAt = Date.now(); S.srvLastError = "";
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {}
+    if (!silent) renderBackup();
+    return true;
+  } catch (e) {
+    S.srvLastError = String(e.message || e);
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {}
+    if (!silent) renderBackup();
+    return false;
+  }
+}
+
+let srvTimer = 0;
+/** 変化があったら、間をおいて自動で預ける */
+function scheduleServerBackup() {
+  if (!S.srvToken) return;
+  const since = Date.now() - (S.srvLastAt || 0);
+  if (since < 30 * 60000) return;              // 30分に1回まで
+  clearTimeout(srvTimer);
+  srvTimer = setTimeout(() => srvBackup(true), 8000);   // 操作が落ち着いてから
 }
 
 function daysSinceBackup() {
@@ -1721,13 +1805,103 @@ function init() {
 
 /* ═══════════════ バックアップの画面 ═══════════════ */
 
+async function renderServerBackup() {
+  const box = document.querySelector("#srvBox");
+  if (!box) return;
+
+  if (S.srvToken) {
+    const d = S.srvLastAt ? Math.floor((Date.now() - S.srvLastAt) / 3600000) : null;
+    const when = S.srvLastAt
+      ? (d < 1 ? "さっき" : d < 24 ? `${d}時間前` : `${Math.floor(d / 24)}日前`)
+      : "まだ";
+    box.innerHTML = `
+      <div class="bk-notice ${S.srvLastError ? "warn" : "ok"}">
+        <b>${S.srvLastError ? "⚠ 前回うまく預けられませんでした" : "✓ 自動で預けています"}</b>
+        <p>${S.srvLastError ? esc(S.srvLastError) : `最後に預けたのは <b>${when}</b>。
+          学習のたびに、30分に1回のペースで自動で預かります。何もしなくて大丈夫です。`}</p>
+      </div>
+      <div class="bk-btns">
+        <button class="btn btn-sm" id="srvNow">今すぐ預ける</button>
+        <button class="btn btn-sm btn-ghost" id="srvList">預けた記録から戻す</button>
+      </div>
+      <div id="srvItems"></div>`;
+    document.querySelector("#srvNow").onclick = async (e) => {
+      e.target.disabled = true; e.target.textContent = "預けています…";
+      const ok = await srvBackup(false);
+      toast(ok ? "サーバーに預けました" : "うまく預けられませんでした");
+    };
+    document.querySelector("#srvList").onclick = renderServerList;
+    return;
+  }
+
+  const found = await srvPing();
+  if (!found) {
+    box.innerHTML = `<div class="bk-notice">
+      <b>まだ使えません</b>
+      <p>サーバーに <code>api/backup.php</code> を置くと、<b>何もしなくても自動で</b>
+        サーバーに記録が預けられるようになります。端末がこわれても、機種変更しても残ります。<br>
+        ZIPの中の <code>api</code> フォルダを、ほかのファイルと一緒にアップロードしてから、
+        このページを開き直してください。</p></div>`;
+    return;
+  }
+  box.innerHTML = `<div class="bk-notice warn">
+      <b>準備ができています</b>
+      <p>ボタンを1回押すだけで、以後は自動で預かるようになります。</p></div>
+    <button class="btn btn-primary" id="srvSetup">自動バックアップを始める</button>`;
+  document.querySelector("#srvSetup").onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = "設定しています…";
+    try {
+      await srvSetup();
+      await srvBackup(false);
+      toast("自動バックアップを始めました");
+    } catch (err) {
+      const claimed = /設定済み/.test(String(err.message));
+      alert(claimed
+        ? "このサーバーは、ほかの端末ですでに設定されています。\n\nその端末の「保護者」タブに出ている合言葉を、この端末にも貼り付けてください。"
+        : String(err.message));
+      if (claimed) {
+        const t = prompt("合言葉を貼り付けてください");
+        if (t) { S.srvToken = t.trim(); save(); await srvBackup(false); }
+      }
+    }
+    renderBackup();
+  };
+}
+
+async function renderServerList() {
+  const box = document.querySelector("#srvItems");
+  box.innerHTML = `<p class="cs">読み込んでいます…</p>`;
+  try {
+    const j = await srvFetch("list");
+    if (!j.items.length) { box.innerHTML = `<p class="cs">まだ預けた記録はありません。</p>`; return; }
+    box.innerHTML = `<h3 class="sub-h">サーバーに預けた記録</h3>` + j.items.map((it) => {
+      const d = new Date(it.at);
+      const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      return `<div class="bk-item"><div><b>${label}</b>
+        <span class="bk-meta">${Math.round(it.bytes / 1024)} KB</span></div>
+        <button class="btn btn-sm btn-ghost" data-srv="${esc(it.file)}">これに戻す</button></div>`;
+    }).join("");
+    box.querySelectorAll("[data-srv]").forEach((b) => b.onclick = async () => {
+      if (!confirm("サーバーに預けた記録に戻します。\n\n今の状態も自動でひかえを取るので、やり直せます。")) return;
+      try {
+        const txt = await srvFetch("get", { query: `&f=${encodeURIComponent(b.dataset.srv)}`, raw: true });
+        applyBackupText(txt);
+        alert("戻しました。");
+        location.reload();
+      } catch (e) { toast(String(e.message || e)); }
+    });
+  } catch (e) { box.innerHTML = `<p class="cs">${esc(String(e.message || e))}</p>`; }
+}
+
 function renderBackup() {
+  renderServerBackup();
   const d = daysSinceBackup();
   const n = document.querySelector("#backupNotice");
   if (n) {
     if (d == null) {
-      n.innerHTML = `<div class="bk-notice warn"><b>まだ一度もバックアップしていません</b>
-        <p>いま作っておくと、機種変更や不意の消去のときも沙和さんの記録が残ります。1分で終わります。</p></div>`;
+      n.innerHTML = `<div class="bk-notice ${S.srvToken ? "" : "warn"}"><b>まだファイルに保存していません</b>
+        <p>${S.srvToken ? "サーバーへの自動バックアップが動いているので急ぎませんが、手元にも1つあると安心です。"
+          : "いま作っておくと、機種変更や不意の消去のときも沙和さんの記録が残ります。1分で終わります。"}</p></div>`;
     } else if (d >= 30) {
       n.innerHTML = `<div class="bk-notice warn"><b>前回のバックアップから ${d}日 たちました</b>
         <p>そろそろ保存しておくと安心です。</p></div>`;
