@@ -174,7 +174,7 @@ const TOOLS = [
   {
     name: "record_answer",
     description:
-      "沙和さんが問題に答えたときに必ず呼ぶ。確信度と正誤を記録し、記憶モデル(FSRS)と復習スケジュールを更新する。確信度を聞かずにこれを呼んではいけない。",
+      "沙和さんが問題に答えたときに必ず呼ぶ。確信度と正誤を記録し、記憶モデルと復習スケジュールを更新する。確信度を聞かずにこれを呼んではいけない。",
     input_schema: {
       type: "object",
       properties: {
@@ -481,6 +481,64 @@ const TOOLS = [
       required: ["topic"],
     },
   },
+
+  /* ── 学習カルテ ────────────────────────────────────────
+     ★指導そのものではなく「指導の振り返り」を書かせる道具。
+       点数には出ない「どうつまずいて、どう直ったか」を6年分ためる。
+       ためた内容は次回のプロンプトに戻すので、書きっぱなしにならない。 */
+  {
+    name: "record_session_review",
+    description:
+      "ひと区切りついたとき(学習を終える・話題が変わる・宿題を1つ片づけた)に呼ぶ、指導の自己評価。" +
+      "点数ではなく【どうつまずき、どう直ったか】を残すためのもの。1回の学習につき1回で十分。" +
+      "沙和さんに見せる文章ではなく、次に指導するAIへの申し送りとして書くこと。" +
+      "推測で埋めないこと。わからない項目は空のままでよい。" +
+      "前回の『次回確認すべきこと』を今回確認できたなら resolves_id にその id を入れる。",
+    input_schema: {
+      type: "object",
+      properties: {
+        subject: { type: "string", description: "教科名(数学・英語 など)" },
+        concept_ids: {
+          type: "array", items: { type: "string" },
+          description: "この回で扱った概念ID(curriculum.js のもの)",
+        },
+        stumble: {
+          type: "string",
+          description: "最初のつまずき。何が起きたかを具体的に。例:「一次関数の変化の割合で、xの増加量とyの増加量を逆にした」",
+        },
+        root_cause: {
+          type: "string",
+          description: "診断した根本原因。表面の間違いではなく、その裏にあったもの。診断していないなら空にする",
+        },
+        root_concept_id: { type: "string", description: "根本原因にあたる概念ID(diagnose_prerequisite が示したもの)" },
+        prereq_used: {
+          type: "array", items: { type: "string" },
+          description: "説明のときに実際に使った前提概念のID",
+        },
+        confidence: {
+          type: "integer", enum: [1, 2, 3],
+          description: "そのとき本人が申告した確信度。3=自信ある 2=たぶん 1=わからない",
+        },
+        error_type: {
+          type: "string",
+          enum: ["calc", "reading", "recall", "overconf", "prereq", "procedure", "phonics", "careless", "concept"],
+          description:
+            "つまずきの型。calc=計算ミス reading=問題文の読み取り recall=思い出せない " +
+            "overconf=自信ありで誤答 prereq=前提の欠け procedure=手順の取りちがえ " +
+            "phonics=英語の音と文字 careless=急ぎ・見落とし concept=考え方そのもの。" +
+            "迷ったら、いちばん決定的だったものを1つだけ選ぶ",
+        },
+        corrected: { type: "string", description: "この回で訂正できたこと。直せなかったなら、そう書く" },
+        next_check: {
+          type: "string",
+          description: "次回いちばんに確認すべきこと。次のAIがそのまま実行できる形で1つだけ書く",
+        },
+        resolves_id: { type: "string", description: "今回確認できた、前回の『次回確認すべきこと』の id" },
+        minutes: { type: "integer", description: "この回にかかったおおよその分数" },
+      },
+      required: ["stumble"],
+    },
+  },
 ];
 
 /* システムプロンプトの組み立て */
@@ -530,6 +588,7 @@ ${HOMEWORK_RULES}
 ${profile.learningBlock || ""}
 ${profile.lukeBlock || ""}
 ${profile.englishBlock || ""}
+${profile.karteBlock || ""}
 
 # 現在の学習状況
 ${statusSummary}
@@ -560,6 +619,20 @@ ${profile.lukeStatus || "- まだ記録はありません。"}
 - 英会話がひと区切りついたら note_english_conversation
 - 沙和さんの様子が変わるたびに luke_react を呼ぶ(できた/まちがえた/答えを聞かれた/つらそう など)
 - Luke の話題になったら get_luke を呼んでから答える
+
+# 学習カルテを残す(ひと区切りごとに1回)
+学習がひと区切りついたら、**record_session_review** を呼んで振り返りを残してください。
+区切りとは「学習を終える」「話題が大きく変わる」「宿題を1つ片づけた」のいずれかです。
+
+- これは沙和さんに見せる文章ではありません。**次に指導するAIへの申し送り**として書いてください
+- 点数ではなく「**どうつまずいて、どう直ったか**」を残します。6年分たまると、
+  この子がどう学ぶ人なのかという、点数からは絶対に見えない記録になります
+- **推測で埋めないでください。** 診断していない根本原因を書くくらいなら空にしてください
+- next_check は次のAIがそのまま実行できる形で、**1つだけ**書いてください
+- 上の「学習カルテ」に未確認の next_check が並んでいたら、今回それを確認できたか考え、
+  できたなら resolves_id にその id を入れてください
+- **沙和さんに「あなたは◯◯型」とラベルを貼らないでください。** 型はそのときのつまずき方の話であって、
+  その子の性質ではありません。カルテはこちらの手当てを決めるためのものです
 
 # 写真・スキャンを受け取ったとき
 1. まず読み取れた内容を短く確認する(「数学ワークのp.42、一次関数の問題が5問だね」)

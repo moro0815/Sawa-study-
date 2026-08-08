@@ -23,17 +23,17 @@ const EVIDENCE = [
       "同じ時間を勉強するなら、まとめてやるより間隔をあけて分けたほうが定着する。忘れかけたタイミングで思い出すと、記憶の「安定度」が跳ね上がる。",
     strength: "非常に強い(Dunloskyの高有用性2つのうちの1つ)",
     source: "Dunlosky et al. (2013) / Cepeda et al. (2008)",
-    rule: "FSRSアルゴリズム(記憶の難易度D・安定度S・想起可能性Rを個人別にモデル化)で復習日を自動計算する。一夜漬けを構造的に不可能にする。",
+    rule: "FSRSの考え方(記憶の難易度D・安定度S・想起可能性R)を借りた簡易モデルで復習日を自動計算する。一夜漬けを構造的に不可能にする。",
   },
   {
     id: "fsrs",
-    title: "FSRS(記憶モデル)",
+    title: "記憶モデル(FSRSの考え方を利用した簡易版)",
     en: "Free Spaced Repetition Scheduler / DSR model",
     finding:
       "従来のSM-2(固定倍率)より、記憶を「難易度・安定度・想起可能性」の3変数でモデル化するほうが、忘却の予測精度が高い。想起可能性はべき関数で減衰する。",
     strength: "強い(大規模学習ログで検証済み)",
     source: "Open Spaced Repetition, FSRS (DSRモデル、19パラメータ)",
-    rule: "各概念に D/S/R を持たせ、想起可能性が90%を切る日に復習を出す。",
+    rule: "各概念に D/S/R を持たせ、想起可能性が90%を切る日に復習を出す。※本家FSRSの19パラメータ最適化までは行っていない簡易版(コード上の名前は FSRS-lite)。",
   },
   {
     id: "eightyfive",
@@ -49,7 +49,7 @@ const EVIDENCE = [
     title: "交互練習(インターリービング)",
     en: "Interleaved Practice",
     finding:
-      "同じ種類の問題を続けて解く(aaabbbccc)より、種類を混ぜる(abcbcacab)ほうがテスト成績が約2倍になる。ただし決定的な注意点があり、練習中の正答率は逆に下がる(混合60% vs 集中89%、d=1.06)。「できない感じ」がするのに結果は良い。",
+      "同じ種類の問題を続けて解く(aaabbbccc)より、種類を混ぜる(abcbcacab)ほうが、あとのテストの成績が大きく良くなる。小4のRCTで 38%→77%(d=1.21)、大学生の体積問題で 20%→63%(d=1.34)。ただし決定的な注意点があり、練習中の正答率は逆に下がる(混合60% vs 集中89%、d=1.06)。「できない感じ」がするのに結果は良い。※これらは特定の課題での比較で、どの学習でも同じ幅で伸びるわけではない。",
     strength: "強い(小4〜大学のRCTで d=1.2 前後)",
     source: "Rohrer, Dedrick, Hartwig & Cheung (2020), Journal of Educational Psychology / Taylor & Rohrer (2010)",
     rule:

@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v24";
+const APP_VERSION = "v25";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -40,8 +40,10 @@ const defaults = () => ({
   actLog: [],            // 使った活動の型の履歴(飽きの防止)
   quizDone: {},          // 勉強法クイズの回答
   apiLog: [],            // 直近のAPI呼び出し記録
-  eng: {},               // 英語 {pron, words, conv, log} — 発音の記録・単語のFSRS・会話回数
+  eng: {},               // 英語 {pron, words, conv, log} — 発音の記録・単語の記憶状態・会話回数
   luke: {},              // 相棒 Luke {bornAt, metAt, tricks, memories, mood, pats, taught}
+  karte: [],             // 学習カルテ(AIの自己評価ログ)。karte.js を参照
+  karteAgg: null,        // 古い記録を落としても残す集計 {total, types, subjects, first}
   homework: [],          // [{id, source, title, items, due, ...}] 学校ぶん＋AIぶん
   sessions: [],          // [{date, answered, correct, minutes}]
   career: DEFAULT_CAREER,      // 今の志望(変数。固定しない)
@@ -87,6 +89,31 @@ function curProvider() { return providerOf(S.provider); }
 function curModel() { return S.model || curProvider().defaultModel; }
 function curKey() { return (S.apiKeys && S.apiKeys[S.provider]) || ""; }
 function curBaseUrl() { return S.baseUrl || curProvider().defaultBaseUrl || ""; }
+
+/* ── CSP(通信先の制限)との整合チェック ───────────────────
+   index.html の connect-src で通信先を固定した。良いことだが、
+   「OpenAI互換」で一覧にないサービスを入れると、送信が黙って失敗する。
+   原因の見えない不具合はいちばん困るので、設定画面で先に知らせる。 */
+
+/** index.html の CSP に書いてある通信先の一覧。CSPが無ければ null */
+function cspConnectList() {
+  const meta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  if (!meta) return null;
+  const m = /connect-src([^;]*)/i.exec(meta.getAttribute("content") || "");
+  return m ? m[1].trim().split(/\s+/).filter(Boolean) : null;
+}
+
+/** その URL へ通信できるか。できないときだけ、そのホスト名を返す */
+function cspBlockedHost(url) {
+  const list = cspConnectList();
+  if (!list) return "";
+  let u; try { u = new URL(url); } catch { return ""; }
+  if (u.origin === location.origin) return list.includes("'self'") ? "" : u.host;
+  const ok = list.some((src) => {
+    try { return new URL(src).host === u.host; } catch { return false; }
+  });
+  return ok ? "" : u.host;
+}
 let lastAutoBackup = 0;
 function save() {
   // 5分に1回、その日のひかえを最新の状態に更新する
@@ -762,6 +789,28 @@ async function runTool(name, input) {
                instruction: "直すのは2〜3点までにしてください。多く言うほど、次に話す量が減ります。" };
     }
 
+    /* ── 学習カルテ ────────────────────────────────
+       AIに毎回「どうつまずいて、どう直ったか」を書かせる。
+       ためた内容は kartePromptBlock() で次回のプロンプトに戻る。 */
+    case "record_session_review": {
+      if (!String(input.stumble || "").trim()) {
+        return { error: "stumble is required", hint: "最初のつまずきが書けないなら、まだ記録するタイミングではありません" };
+      }
+      const k = addKarte(S, input);
+      save(); renderKarte();
+      const prof = learnerProfile(S);
+      return {
+        recorded: k.id, date: k.date,
+        error_type: k.errorType ? LEARNER_TYPES[k.errorType].label : "(未分類)",
+        total_reviews: prof.total,
+        resolved: input.resolves_id ? "前回の確認事項を1件、済みにしました" : "",
+        instruction: prof.enough
+          ? `これまでの傾向は「${prof.top.icon} ${prof.top.label}」が最多(${Math.round(prof.top.share * 100)}%)です。`
+            + `${prof.top.move} ただし今回が当てはまるとは限りません。沙和さんにこの分類を伝える必要はありません。`
+          : `あと ${prof.need} 回ぶんたまると傾向が出せます。少ない回数で決めつけないようにしています。`,
+      };
+    }
+
     default:
       return { error: "unknown tool: " + name };
   }
@@ -880,6 +929,7 @@ async function send(override) {
         englishStatus: englishStatusText(S),
         lukeBlock: lukePromptBlock(S, S.persona),
         lukeStatus: lukeStatusText(S),
+        karteBlock: kartePromptBlock(S),
       }, statusSummary()),
       messages: S.apiMessages,
       tools: TOOLS,
@@ -1850,7 +1900,86 @@ function renderKyotsu() {
     `<tr><td><b>合計</b></td><td><b>${k.total}</b></td><td><b>${k.needed}</b></td></tr></tbody></table>`;
 }
 
+/* ── 学習カルテ ─────────────────────────────────────────
+   ★見せ方の方針
+   ここは保護者タブにだけ置く。本人には見せない。
+   「あなたは計算ミス型」と本人に伝わった瞬間、それは能力のラベルになり、
+   直すための手がかりではなくなる(#7 のポイントで釣らない、と同じ理由)。 */
+
+function renderKarte() {
+  const box = $("#karteProfile");
+  if (!box) return;
+  const prof = learnerProfile(S);
+
+  $("#karteNote").textContent = prof.total ? `${prof.total}回ぶん` : "";
+
+  if (!prof.enough) {
+    box.innerHTML = `<div class="karte-empty">${esc(karteSummaryText(S))}</div>`;
+    $("#karteSubjects").innerHTML = "";
+    $("#karteTrend").innerHTML = "";
+  } else {
+    box.innerHTML = `<div class="karte-lead">${esc(karteSummaryText(S))}</div>` +
+      prof.ranked.slice(0, 4).map((r) => `
+        <div class="kt">
+          <div class="kt-h"><span class="kt-i">${r.icon}</span><b>${esc(r.label)}</b>
+            <span class="kt-n">${r.n}回 / ${Math.round(r.share * 100)}%</span></div>
+          <div class="bar"><i style="width:${Math.round(r.share * 100)}%"></i></div>
+          <p class="kt-w">${esc(r.what)}</p>
+          <p class="kt-m">→ ${esc(r.move)}</p>
+        </div>`).join("");
+
+    const bys = karteBySubject(S);
+    $("#karteSubjects").innerHTML = bys.length
+      ? `<h3 class="kt-sub">教科ごとに多い型</h3>` + bys.map((b) =>
+          `<div class="row-kv"><span>${esc(b.subject)}</span><b>${b.icon} ${esc(b.label)}
+             <span class="kt-n">${b.n}/${b.total}</span></b></div>`).join("")
+      : "";
+
+    const tr = karteTrend(S);
+    $("#karteTrend").innerHTML = tr.length > 1
+      ? `<h3 class="kt-sub">半年ごとの移り変わり</h3><div class="kt-trend">` + tr.map((b) =>
+          `<div class="kt-tr"><span class="kt-tk">${esc(b.key)}</span>
+             <b>${b.topId ? LEARNER_TYPES[b.topId].icon + " " + esc(LEARNER_TYPES[b.topId].label) : "—"}</b>
+             <span class="kt-n">${b.n}回</span></div>`).join("") +
+          `</div><p class="cs">型が変わっていくこと自体が、直った記録です。</p>`
+      : "";
+  }
+
+  /* まだ確認できていない「次回確認すべきこと」 */
+  const open = openNextChecks(S);
+  $("#karteOpen").innerHTML = open.length
+    ? `<h3 class="kt-sub">次回いちばんに確認すること</h3>` + open.map((k) =>
+        `<div class="kt-next"><span class="kt-d">${esc(k.date)}</span>${esc(k.nextCheck)}</div>`).join("") +
+      `<p class="cs">この内容は<b>次にAI先生と話すときのプロンプトに自動で入ります</b>。書きっぱなしにはなりません。</p>`
+    : "";
+
+  /* 1回ごとの記録 */
+  const rows = (S.karte || []).slice(-40).reverse();
+  $("#karteList").innerHTML = rows.length ? rows.map((k) => {
+    const t = LEARNER_TYPES[k.errorType];
+    const names = k.conceptIds.map((id) => CONCEPT_MAP[id]?.n).filter(Boolean);
+    return `<div class="kr">
+      <div class="kr-h"><span class="kr-d">${esc(k.date)}</span>
+        ${k.subject ? `<span class="kr-s">${esc(k.subject)}</span>` : ""}
+        ${t ? `<span class="kr-t">${t.icon} ${esc(t.label)}</span>` : ""}
+        ${k.confidence ? `<span class="kr-c c${k.confidence}">${CONFIDENCE[k.confidence].label}</span>` : ""}</div>
+      ${names.length ? `<div class="kr-cn">${esc(names.join(" / "))}</div>` : ""}
+      <dl class="kr-dl">
+        <dt>つまずき</dt><dd>${esc(k.stumble)}</dd>
+        ${k.rootCause ? `<dt>根本原因</dt><dd>${esc(k.rootCause)}${
+          k.rootConceptId && CONCEPT_MAP[k.rootConceptId]
+            ? `<span class="kr-rc">(${esc(CONCEPT_MAP[k.rootConceptId].n)})</span>` : ""}</dd>` : ""}
+        ${k.corrected ? `<dt>直ったこと</dt><dd>${esc(k.corrected)}</dd>` : ""}
+        ${k.nextCheck ? `<dt>次回</dt><dd>${esc(k.nextCheck)}
+          ${k.checked ? `<span class="kr-ok">確認済み</span>` : `<span class="kr-open">未確認</span>`}</dd>` : ""}
+      </dl>
+    </div>`;
+  }).join("") : `<p class="cs">まだ記録はありません。</p>`;
+}
+
 function renderParent() {
+  renderKarte();
+
   /* 今週の一言 */
   const adv = guardianAdvice(S);
   $("#guardianAdvice").innerHTML = `<div class="adv adv-${adv.tone}">
@@ -1880,7 +2009,8 @@ function renderParent() {
     <div class="wr-row"><span>最優先の弱点</span><b>${w.counts["hi-wrong"]} 件</b></div>
     <div class="wr-msg"><b>この数字の読み方</b><br>
       練習中の正答率は<b>低くて構いません</b>。このアプリは単元をわざと混ぜて出題しており(交互練習)、
-      研究では練習中の正答率が 89%→60% に下がる一方、本番のテスト成績は約2倍になることが確認されています。
+      ある研究では、練習中の正答率が 89%→60% に下がる一方、あとのテストの成績は 38%→77% と大きく改善しました(Rohrer et al. 2020)。
+      特定の条件での比較なので、同じ幅で伸びると約束するものではありませんが、方向は一貫しています。
       正答率ではなく<b>「学習した日数」と「新しく習得した概念」</b>を見てあげてください。</div>`;
 
   /* 教科別の内訳 */
@@ -3192,6 +3322,23 @@ function renderProviderUI() {
   const needBase = !!p.needsBaseUrl;
   $("#baseUrlRow").hidden = !needBase;
   if (needBase) $("#baseUrl").value = curBaseUrl();
+
+  // ★通信先がCSPで許可されているか。ダメなら直し方まで書く
+  const blocked = needBase ? cspBlockedHost(curBaseUrl()) : "";
+  const bw = $("#baseUrlWarn");
+  bw.hidden = !blocked;
+  if (blocked) {
+    bw.innerHTML = `⚠ <b>${esc(blocked)}</b> へは通信できない設定になっています。<br>
+      安全のため、通信先を index.html の中で限定しているためです。<br>
+      使うには <code>index.html</code> の <code>connect-src</code> に
+      <code>https://${esc(blocked)}</code> の1行を足してください。`;
+  }
+  const list = cspConnectList();
+  $("#cspNote").innerHTML = list
+    ? `🔒 このアプリが通信できる先は、あらかじめ
+       <b>${list.filter((x) => x.startsWith("http")).length}か所</b>に限定されています。
+       もしどこかに不正なスクリプトが入り込んでも、キーを知らないサーバーへは送れません。`
+    : "";
 
   $("#apiKeyLabel").firstChild.nodeValue = p.keyLabel;
   $("#apiKey").placeholder = p.keyPlaceholder;

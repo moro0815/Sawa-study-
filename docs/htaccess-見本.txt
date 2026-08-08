@@ -57,9 +57,21 @@
   # ── 4. セキュリティヘッダ ──────────────────────────
   Header set X-Content-Type-Options "nosniff"
   Header set Referrer-Policy "no-referrer"
-  Header set X-Frame-Options "SAMEORIGIN"
+  Header set X-Frame-Options "DENY"
   # 検索エンジンに載せない(家族用のため)
   Header set X-Robots-Tag "noindex, nofollow, noarchive"
+
+  # ── 4-2. ほかのサイトに埋め込ませない ──────────────
+  #  中身の制限(script-src / connect-src など)は index.html と
+  #  share.html の <meta> 側に書いてあります。ここに同じものを
+  #  書くと、通信先を足したいときに2か所直すことになるので書きません。
+  #  frame-ancestors だけは <meta> では効かないので、ここに置きます。
+  Header set Content-Security-Policy "frame-ancestors 'none'"
+
+  # ── 4-3. 使わない機能を止める ──────────────────────
+  #  カメラ(宿題の撮影)とマイク(発音練習)は自分のページだけ許可。
+  #  位置情報などは、うっかり使えないように完全に止めます。
+  Header set Permissions-Policy "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()"
 </IfModule>
 
 # ── 5. ファイル一覧を見せない ─────────────────────────

@@ -9,6 +9,46 @@
 <meta name="apple-mobile-web-app-title" content="沙和ナビ">
 <meta name="format-detection" content="telephone=no">
 <meta name="robots" content="noindex,nofollow,noarchive">
+
+<!-- ══════════════════════════════════════════════════════════════════
+     Content Security Policy(CSP)
+
+     APIキーはこの端末の localStorage にあります。もし1か所でも
+     スクリプトを差し込まれると(XSS)、キーを読み出して外部へ送られます。
+     このアプリは innerHTML を多く使うので、その入口を塞いでおきます。
+
+     ★ script-src に 'unsafe-inline' も 'unsafe-eval' も入れていません。
+       差し込まれた <script> や onclick= は、実行される前にブラウザが止めます。
+     ★ connect-src で通信先を下の一覧だけに固定しています。
+       たとえキーを読めても、知らないサーバーへは送れません。
+     ★ style-src だけ 'unsafe-inline' が必要です(棒グラフの幅などを
+       style="width:62%" で書いているため)。CSSからの外部読み込みは
+       img-src / font-src 側で塞いでいるので、抜け道にはなりません。
+
+     ▼「OpenAI互換」で下記以外のサービスを使うときは、
+       connect-src にそのホストを1つ足してください。ここだけです。
+     ══════════════════════════════════════════════════════════════════ -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:;
+  media-src 'self' blob:;
+  font-src 'self';
+  manifest-src 'self';
+  worker-src 'self';
+  connect-src 'self'
+    https://api.anthropic.com
+    https://generativelanguage.googleapis.com
+    https://openrouter.ai
+    https://api.openai.com
+    https://api.deepseek.com;
+  base-uri 'none';
+  form-action 'none';
+  frame-src 'none';
+  object-src 'none';
+">
+
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <title>沙和ナビ</title>
@@ -89,7 +129,7 @@
     <div id="todayList" class="today-list"></div>
     <div class="interleave-banner" id="interleaveBanner" hidden>
       <b>⚠ わざと混ぜています</b>
-      <p>今日の出題は単元を混ぜてあります。混ぜると<b>その日の正答率は下がります</b>が、本番で思い出せる力は約2倍になることが研究でわかっています(Rohrer et al. 2020)。今日できなくても、それは設計どおりです。</p>
+      <p>今日の出題は単元を混ぜてあります。混ぜると<b>その日の正答率は下がります</b>が、<b>あとのテストの成績は大きく良くなった</b>という研究があります(Rohrer et al. 2020 では 38%→77%)。今日できなくても、それは設計どおりです。</p>
     </div>
     <button class="btn btn-primary" id="startStudy">この内容で学習をはじめる</button>
   </div>
@@ -497,6 +537,21 @@
     <div id="subjectBreakdown"></div>
   </div>
 
+  <div class="card" id="cardKarte">
+    <h2 class="ct">▶ 学習カルテ <span class="ct-note" id="karteNote"></span></h2>
+    <p class="cs">点数には出ない記録です。AI先生が毎回、<b>どこでつまずき、原因は何で、何が直り、次に何を確かめるか</b>を
+      自分で書き残しています。ここに出るのは<b>つまずき「方」の傾向</b>で、沙和さん本人の性質ではありません。<br>
+      <b>本人にはこの分類を見せていません。</b>「あなたは◯◯型」と言われることが、いちばん学びを止めるからです。</p>
+    <div id="karteProfile"></div>
+    <div id="karteOpen"></div>
+    <div id="karteSubjects"></div>
+    <div id="karteTrend"></div>
+    <details class="karte-log">
+      <summary>1回ごとの記録を見る</summary>
+      <div id="karteList"></div>
+    </details>
+  </div>
+
   <div class="card">
     <h2 class="ct">▶ 受験までの位置</h2>
     <div id="parentExamStatus"></div>
@@ -577,11 +632,13 @@
 
     <label class="lbl" id="baseUrlRow" hidden>APIのURL(ベースURL)
       <input type="text" id="baseUrl" class="inp" placeholder="https://openrouter.ai/api/v1"></label>
+    <p class="warn-note" id="baseUrlWarn" hidden></p>
 
     <label class="lbl" id="apiKeyLabel">APIキー
       <input type="password" id="apiKey" class="inp" placeholder="…"></label>
     <p class="cs" id="keyNote"></p>
     <p class="cs">キーはこの端末のブラウザ内にのみ保存されます。AIごとに別々に覚えるので、切り替えても入れ直す必要はありません。</p>
+    <p class="cs" id="cspNote"></p>
 
     <div class="note-box">
       <b>安いAIに替えると、何が変わるか</b>
@@ -672,6 +729,7 @@
 <script src="js/luke.js"></script>
 <script src="js/speech.js"></script>
 <script src="js/camera.js"></script>
+<script src="js/karte.js"></script>
 <script src="js/english.js"></script>
 <script src="js/careers.js"></script>
 <script src="js/exam.js"></script>

@@ -242,7 +242,7 @@ function weakPhonemes(S, limit = 3) {
      (b) 語彙を何倍にもふくらませる道具   … 接辞と語根
      (c) 日本語話者だけがひっかかる罠     … 和製英語・多義語・可算不可算
    これ以外の語は、実際に読んだ文・解いた問題の中で出会ったものを
-   AIがその場で登録し、FSRS(忘れかけたころに出す仕組み)に乗せる。
+   AIがその場で登録し、簡易記憶モデル(忘れかけたころに出す仕組み)に乗せる。
    出会った文脈ごと覚えるほうが、確実に残る。 */
 
 /** 語彙カバー率 — 「何語知っていれば読めるのか」の実際の数字 */
@@ -602,13 +602,13 @@ const FLUENCY_432 = {
 function engState(S) {
   const e = (S.eng ||= {});
   e.pron ||= {};
-  e.words ||= {};       // word -> FSRSの記憶状態
+  e.words ||= {};       // word -> 記憶状態(memory.js と同じ簡易モデル)
   e.conv ||= [];        // [{at, topic, turns, level}]
   e.log ||= [];         // [{at, kind}]
   return e;
 }
 
-/** 語をFSRSに載せる(意味・例文つき) */
+/** 語を記憶モデルに載せる(意味・例文つき) */
 function addWord(S, word, meaning, example = "", note = "") {
   const e = engState(S);
   const key = String(word || "").trim().toLowerCase();

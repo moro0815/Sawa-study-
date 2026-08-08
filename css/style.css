@@ -1231,3 +1231,49 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   border: 4px solid rgba(255,255,255,.45); background-clip: padding-box;
   cursor: pointer; flex: 0 0 auto; }
 .cam-shutter:active { transform: scale(.93); }
+
+/* CSPで通信先が塞がれているときの注意書き */
+.warn-note { font-size: 12px; line-height: 1.7; color: #8a5a12; background: #fdf4e3;
+  border: 1px solid #f0d9a8; border-radius: 10px; padding: 8px 10px; margin: -2px 0 8px; }
+.warn-note code { background: rgba(0,0,0,.06); border-radius: 4px; padding: 1px 4px;
+  font-size: 11.5px; }
+
+/* ── 学習カルテ ─────────────────────────────────── */
+.karte-empty { font-size: 12.5px; color: var(--ink2); background: var(--bg);
+  border-radius: 10px; padding: 10px 12px; }
+.karte-lead { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.kt { margin-bottom: 12px; }
+.kt-h { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.kt-i { font-size: 15px; }
+.kt-n { margin-left: auto; font-size: 11px; color: var(--ink3); font-weight: 600; }
+.kt .bar { height: 5px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 5px; }
+.kt .bar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.kt-w { font-size: 11.5px; color: var(--ink2); margin-top: 3px; }
+.kt-m { font-size: 11.5px; color: var(--green); font-weight: 600; margin-top: 1px; }
+.kt-sub { font-size: 12px; font-weight: 700; color: var(--ink2); margin: 14px 0 6px;
+  padding-top: 10px; border-top: 1px solid var(--line); }
+.kt-trend { display: flex; flex-direction: column; gap: 4px; }
+.kt-tr { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.kt-tk { color: var(--ink3); flex: 0 0 84px; }
+.kt-next { font-size: 12.5px; background: #fff9e8; border: 1px solid #f2e0b0;
+  border-radius: 9px; padding: 7px 10px; margin-bottom: 5px; }
+.kt-d { display: block; font-size: 10.5px; color: var(--ink3); }
+.karte-log { margin-top: 12px; }
+.karte-log summary { font-size: 12px; color: var(--ink2); cursor: pointer; padding: 6px 0; }
+.kr { border-top: 1px solid var(--line); padding: 9px 0; }
+.kr-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+.kr-d { color: var(--ink3); }
+.kr-s { background: var(--bg); border-radius: 999px; padding: 1px 7px; font-weight: 600; }
+.kr-t { font-weight: 600; }
+.kr-c { border-radius: 999px; padding: 1px 7px; font-weight: 600; }
+.kr-c.c3 { background: #fdeaea; color: var(--red); }
+.kr-c.c2 { background: #fdf4e3; color: var(--amber); }
+.kr-c.c1 { background: var(--bg); color: var(--ink2); }
+.kr-cn { font-size: 11px; color: var(--ink3); margin-top: 2px; }
+.kr-dl { display: grid; grid-template-columns: 62px 1fr; gap: 2px 8px;
+  font-size: 12px; margin-top: 5px; }
+.kr-dl dt { color: var(--ink3); font-size: 11px; }
+.kr-dl dd { color: var(--ink); }
+.kr-rc { color: var(--ink3); font-size: 11px; margin-left: 4px; }
+.kr-ok { color: var(--green); font-size: 10.5px; font-weight: 700; margin-left: 5px; }
+.kr-open { color: var(--amber); font-size: 10.5px; font-weight: 700; margin-left: 5px; }
