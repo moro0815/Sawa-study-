@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v29";
+const APP_VERSION = "v30";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -2626,7 +2626,8 @@ function init() {
   /* ★生データを読み込む。IndexedDB なので非同期。
      読み終わるまでに答えたぶんは、待ち行列に入れてあとから書き出す。 */
   rawInit().then((r) => {
-    console.info(`生データ: ${r.count}件 (${r.store})`);
+    console.info(`生データ: ${r.count}件 (${r.store})`
+      + (r.merged ? ` — 逃がしてあった ${r.merged}件を合流しました` : ""));
     renderRawInfo();
   });
 

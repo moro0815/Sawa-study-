@@ -69,45 +69,98 @@ function deviceTag() {
 
 /* ── IndexedDB ────────────────────────────────────────── */
 
+/**
+ * ★ここは一度こわれていました。直した経緯を残します。
+ *
+ *   以前:  setTimeout(() => resolve(req.result || null), 3000);
+ *
+ * IDBRequest は **まだ完了していないときに .result を読むと InvalidStateError を投げます**
+ * (仕様どおりの動作)。タイマーが先に撃たれると、この1行が例外を投げます。
+ * 例外はタイマーの中なので誰も受け取らず、**Promise は永久に解決しません。**
+ *
+ *   rawOpen() が返らない → rawInit() が返らない → rawReady が false のまま
+ *   → 答えたぶんが rawQueue にたまり続け、**1件も保存されない**
+ *
+ * しかもエラーは画面に出ません。「消さない生データ」を名乗る層が、
+ * 黙って何も書かなくなるという、いちばん困る壊れ方です。
+ * iPhone / iPad の Safari で IndexedDB の応答が遅れたときに出ます。
+ *
+ * 直し方:**先に決まったものだけを採用する**(settled フラグ)。
+ * .result は onsuccess の中でしか読みません。そこでは必ず完了しています。
+ */
 function rawOpen() {
   return new Promise((resolve) => {
     if (!window.indexedDB) return resolve(null);
     let req;
     try { req = indexedDB.open(RAW_DB, 1); } catch (_) { return resolve(null); }
+
+    let settled = false;
+    const done = (v) => { if (settled) return; settled = true; resolve(v); };
+
     req.onupgradeneeded = () => {
-      const db = req.result;
+      const db = req.result;              // ここは完了しているので安全
       if (!db.objectStoreNames.contains(RAW_STORE)) {
         const st = db.createObjectStore(RAW_STORE, { keyPath: "id", autoIncrement: true });
         st.createIndex("t", "t");
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(null);
-    // プライベートブラウズなどで固まることがあるので、待ちすぎない
-    setTimeout(() => resolve(req.result || null), 3000);
+    req.onsuccess = () => done(req.result);
+    req.onerror   = () => done(null);
+    // 別のタブが古い版を開いていると、成功も失敗も来ないことがある
+    req.onblocked = () => done(null);
+
+    // プライベートブラウズなどで固まることがあるので、待ちすぎない。
+    // ★ここで req.result を読んではいけない(上の説明のとおり)
+    setTimeout(() => done(null), 3000);
   });
 }
 
-/** 起動時に1回。全件をメモリへ */
+function readFallbackLS() {
+  try { return JSON.parse(localStorage.getItem(RAW_LS_KEY)) || []; } catch (_) { return []; }
+}
+
+/**
+ * 起動時に1回。全件をメモリへ。
+ *
+ * ★上の時間切れが起きると、その回だけ localStorage に書きます。
+ *   次に開いたとき IndexedDB が正常に開くと、そのぶんが**見えなくなります。**
+ *   保存先が2つに割れて、片方が忘れられる形です。
+ *   時間切れの経路を用意する以上、ここで必ず合流させます。
+ */
 async function rawInit() {
   rawDb = await rawOpen();
+
   if (!rawDb) {
-    try { RAW = JSON.parse(localStorage.getItem(RAW_LS_KEY)) || []; } catch (_) { RAW = []; }
+    RAW = readFallbackLS();
     rawReady = true;
     flushQueue();
     return { store: "localStorage", count: RAW.length };
   }
+
   RAW = await new Promise((res) => {
+    let settled = false;
+    const done = (v) => { if (settled) return; settled = true; res(v); };
     try {
       const r = rawDb.transaction(RAW_STORE, "readonly").objectStore(RAW_STORE).getAll();
-      r.onsuccess = () => res(r.result || []);
-      r.onerror = () => res([]);
-    } catch (_) { res([]); }
+      r.onsuccess = () => done(r.result || []);   // ここも .result は完了後だけ読む
+      r.onerror   = () => done([]);
+      setTimeout(() => done([]), 3000);
+    } catch (_) { done([]); }
   });
   RAW.sort((a, b) => a.t - b.t);
   rawReady = true;
+
+  /* ★前回 localStorage に逃がしたぶんを IndexedDB に合流させ、逃がし場所を空にする。
+     これをしないと、時間切れが1回起きるたびに、その日の記録が迷子になります。 */
+  const stray = readFallbackLS();
+  let merged = 0;
+  if (stray.length) {
+    merged = await rawImport(stray);
+    try { localStorage.removeItem(RAW_LS_KEY); } catch (_) {}
+  }
+
   flushQueue();
-  return { store: "IndexedDB", count: RAW.length };
+  return { store: "IndexedDB", count: RAW.length, merged };
 }
 
 function flushQueue() {
