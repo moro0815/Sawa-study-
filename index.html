@@ -76,6 +76,24 @@
 
 <!-- ══════════ ホーム ══════════ -->
 <section id="s-home" class="screen active">
+
+  <!-- ★開いた瞬間に見える1枚。ここで迷わせない。
+       教科選択 → 単元選択 → 問題選択 を毎回させないための card。 -->
+  <div class="card mission" id="cardMission">
+    <div class="ms-luke">
+      <div class="ms-face" id="msFace"></div>
+      <p class="ms-say" id="msSay"></p>
+    </div>
+    <div class="ms-body" id="msBody"></div>
+    <button class="btn btn-primary ms-go" id="msGo">Lukeと始める</button>
+    <div class="ms-alt">
+      <button class="ms-a" id="msMini">5分だけ</button>
+      <button class="ms-a" id="msPick">科目を選ぶ</button>
+      <button class="ms-a" id="msFree">自由に質問</button>
+    </div>
+    <button class="ms-end" id="msEnd" hidden>今日はここまでにする</button>
+  </div>
+
   <div class="card hero">
     <div class="hero-head">
       <div>
@@ -738,6 +756,7 @@
 <script src="js/luke.js"></script>
 <script src="js/speech.js"></script>
 <script src="js/camera.js"></script>
+<script src="js/today.js"></script>
 <script src="js/cause.js"></script>
 <script src="js/transfer.js"></script>
 <script src="js/karte.js"></script>

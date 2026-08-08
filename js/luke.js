@@ -22,7 +22,8 @@
      自信あり×不正解       → 目をまんまる。いちばん喜ぶ ★宝物を見つけた顔
      「答えを教えて」       → ソッポ。「それは教えないもん」
      確信度を言わずに答えた → ソッポ。「先に言って?」
-     何日も会えていない     → しょんぼり。でも戻ってきた瞬間に大喜び
+     何日ぶりでも           → まっすぐ喜ぶだけ。しょんぼりしない
+                              (休みを悲しんで見せるのは、休みを罰することだから)
 
    つまり Luke がそっぽを向くのは【できなかったとき】ではなく
    【近道をしようとしたとき】。しかも、すぐ許す。
@@ -73,10 +74,14 @@ const LUKE_MOODS = {
     lines: ["…答えは教えないもん。", "ふんっ。自分で考えるほうが楽しいよ。",
             "先に『どのくらい自信ある?』を言って?", "ずるはナシ。オレ見てるからね。", "…ヒントだけなら、いいけど。"],
   },
+  /* ★「しょんぼり」をやめました。
+     休んだことに対してキャラクターが悲しむのは、**休みを罰する**ことです。
+     このアプリは間違いを罰しないので、休みも罰しません。
+     戻ってきた瞬間に、まっすぐ喜ぶだけにしています。 */
   lonely: {
-    id: "lonely", name: "しょんぼり", art: { tail: 2.6, tilt: 6, ear: 8, eye: "sad", bob: 0 },
-    lines: ["……ひさしぶり。", "待ってた。ほんとに待ってた。", "帰ってきた!もういい、うれしい!",
-            "ちょっとだけ、さみしかった。"],
+    id: "lonely", name: "おかえり", art: { tail: 5.5, tilt: -4, ear: 12, eye: "happy", bob: 3 },
+    lines: ["おかえり!会いたかった!", "帰ってきた!うれしい!", "おかえり。今日は軽くいこ?",
+            "待ってたよ。ちょっとだけでいいからね。"],
   },
   sleepy: {
     id: "sleepy", name: "ねむい", art: { tail: 2.2, tilt: 8, ear: 6, eye: "closed", bob: 0 },
@@ -179,7 +184,7 @@ const LUKE_ART_SLOTS = [
 /** きもち → どの絵を使うか */
 const MOOD_TO_SLOT = {
   normal: "base", excited: "happy", happy: "happy", proud: "happy",
-  tilt: "think", teach: "think", lonely: "think",
+  tilt: "think", teach: "think", lonely: "happy",
   treasure: "wow", party: "wow",
   sulk: "sulk", sleepy: "sleep", snuggle: "sleep",
 };
@@ -355,6 +360,10 @@ function lukeBaseMood(S) {
   const h = new Date().getHours();
   const since = l.lastSeen ? (Date.now() - l.lastSeen) / 864e5 : 0;
   if (isLukeBirthday(S)) return "party";
+  /* ★「おかえり」の判定は、ホームの今日のミッションと同じ信号を使う。
+     別々に持つと、カードは「5日ぶり」なのに Luke はふつう、という
+     ちぐはぐが起きる(実際いちど起きた)。 */
+  if (typeof isComeback === "function" ? isComeback(S) : since >= 2) return "lonely";
   if (since >= 3) return "lonely";
   if (h >= 22 || h < 5) return "sleepy";
   const mins = (S.sessions || []).find((x) => x.date === todayISO())?.minutes || 0;
@@ -396,9 +405,15 @@ function lukeLine(S, mood) {
   return pick;
 }
 
+/**
+ * ★保護者が実際に誕生日を入れたときだけ祝います。
+ *   既定の bornAt は「ちょうど1年前の今日」なので、そのままだと
+ *   **使い始めた初日に必ず誕生日**になってしまいます。
+ *   毎年その日に祝われ続けるのも変なので、設定されるまでは祝いません。
+ */
 function isLukeBirthday(S) {
   const l = lukeState(S);
-  return l.bornAt.slice(5) === todayISO().slice(5);
+  return !!l.bornSet && l.bornAt.slice(5) === todayISO().slice(5);
 }
 
 /* ── 芸 ─────────────────────────────────────────────── */

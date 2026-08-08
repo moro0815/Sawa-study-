@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v26";
+const APP_VERSION = "v27";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1009,6 +1009,7 @@ async function send(override) {
         lukeBlock: lukePromptBlock(S, S.persona),
         lukeStatus: lukeStatusText(S),
         karteBlock: kartePromptBlock(S),
+        todayBlock: todayPromptBlock(S),
         transferBlock: transferPromptBlock(S),
         causeBlock: causePromptBlock(S),
       }, statusSummary()),
@@ -1264,7 +1265,73 @@ function renderTop() {
   $("#tbSub").textContent = `${S.name}さん・${S.grade}`;
 }
 
+/* ── 今日のミッション ────────────────────────────────────
+   ★ここが「3秒で始められる」の本体。
+     選ばせるのをやめて、こちらで決める。決めるのがいちばん重い作業で、
+     疲れている日はそこで閉じてしまうから。 */
+
+let planMode = null;   // null = おまかせ。"mini" を押したときだけ固定
+
+function renderMission() {
+  const box = $("#cardMission");
+  if (!box) return;
+  const p = todayPlan(S, planMode);
+
+  $("#msFace").innerHTML = lukeFace(52);
+  $("#msSay").textContent = lukeHomeLine(S);
+
+  const done = p.done;
+  const bits = [];
+  if (p.counts.hot) bits.push(`<li><b>いちばんのびるところ</b> × ${p.counts.hot}</li>`);
+  const plainRev = p.counts.review - p.counts.hot;
+  if (plainRev > 0) bits.push(`<li>復習 × ${plainRev}</li>`);
+  if (p.counts.new) bits.push(`<li>新しいこと × ${p.counts.new}</li>`);
+
+  $("#msBody").innerHTML = done
+    ? `<div class="ms-done">✓ 今日のぶんは終わっています<br>
+        <span>${(S.sessions || []).find((x) => x.date === todayISO())?.answered || 0}問こたえました。もうやらなくて大丈夫です。</span></div>`
+    : `<div class="ms-min">${p.comeback ? `<b>${p.daysAway}日ぶり。軽くしておきました</b> ・ ` : ""}約 ${p.minutes} 分で終わります</div>
+       <ul class="ms-list">${bits.join("") || "<li>まずは1問だけ</li>"}</ul>`;
+
+  $("#msGo").textContent = done ? "それでも もう少しやる" : p.mode === "mini" ? "5分だけ始める" : "Lukeと始める";
+  $("#msGo").className = "btn ms-go " + (done ? "btn-ghost" : "btn-primary");
+  $("#msMini").classList.toggle("on", p.mode === "mini");
+  // 今日なにかした日だけ「おしまい」を出す。何もしていない日に出すと催促に見える
+  $("#msEnd").hidden = !todayAnswered(S);
+}
+
+function startToday(mode) {
+  planMode = mode || null;
+  const p = todayPlan(S, planMode);
+  S.persona = "sensei"; S.personaPinned = true;
+  save(); renderPersona(); go("study");
+  const names = p.items.map((x) => x.concept.n).join("、");
+  send(p.comeback
+    ? `今日はひさしぶり。軽めでお願いします。${names} を短くやりたいです。`
+    : p.mode === "mini"
+    ? `5分だけやりたいです。${names} を短くお願いします。`
+    : `今日の分をやりたいです。${names} の順でお願いします。`);
+}
+
+/* ★終わり方。正答率で締めない。 */
+function showWrapUp() {
+  const w = wrapUp(S);
+  const el = document.createElement("div");
+  el.className = "dream-modal";
+  el.innerHTML = `<div class="dm-box wrap-box">
+    <div class="wrap-face">${lukeFace(64)}</div>
+    <div class="dm-t">今日できるようになったこと</div>
+    <ul class="wrap-list">${w.got.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>
+    <p class="wrap-luke">${esc(w.lukeLine)}</p>
+    <div class="wrap-meta">${w.answered ? `${w.answered}問 ・ ` : ""}${w.minutes ? `${w.minutes}分` : ""}</div>
+    <button class="btn btn-primary" id="wrapClose">おしまい</button></div>`;
+  document.body.appendChild(el);
+  el.querySelector("#wrapClose").onclick = () => { el.remove(); go("home"); };
+  lukeReact(S, "done"); save(); renderLuke();
+}
+
 function renderHome() {
+  renderMission();
   const h = new Date().getHours();
   $("#heroGreet").textContent = h < 10 ? "おはようございます" : h < 18 ? "こんにちは" : "こんばんは";
   const w = weaknessSummary(S.mem);
@@ -2267,7 +2334,14 @@ function init() {
     send("今日の宿題を出してください。学校のぶんと合わせて、無理のない量でお願いします。");
   };
   $("#uploadHomework").onclick = () => { go("study"); showScanHelp(); };
-  $("#startStudy").onclick = () => { S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study"); send("今日の分をやりたいです。まず何から?"); };
+  $("#startStudy").onclick = () => startToday(null);
+
+  // ★今日のミッション
+  $("#msGo").onclick = () => startToday(planMode);
+  $("#msMini").onclick = () => { planMode = planMode === "mini" ? null : "mini"; renderMission(); };
+  $("#msPick").onclick = () => { go("weak"); $("#cardSubjectPick")?.scrollIntoView({ behavior: "smooth" }); };
+  $("#msFree").onclick = () => { go("study"); $("#input").focus(); };
+  $("#msEnd").onclick = showWrapUp;
 
   // チャット
   $("#send").onclick = () => (busy ? stopSending() : send());
@@ -2676,7 +2750,7 @@ function renderLukeDetail() {
   const bd = $("#lukeBd");
   if (bd) bd.onchange = () => {
     if (!bd.value) return;
-    l.bornAt = bd.value; save(); renderLuke();
+    l.bornAt = bd.value; l.bornSet = true; save(); renderLuke();
     toast(`Lukeの誕生日を ${bd.value} にしました`);
   };
 }
