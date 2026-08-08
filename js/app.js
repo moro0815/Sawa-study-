@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v17";
+const APP_VERSION = "v18";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -2501,11 +2501,105 @@ function renderRwPanel(kind) {
 
 /** 用意された絵があればそれを、無ければSVGを描く */
 function lukeFigure(mood, size = 116) {
-  const url = lukeArtUrl(mood.id);
-  if (!url) return lukeSvg(mood, size);
+  const e = lukeArtEntry(mood.id);
+  if (!e || !e.u) return lukeSvg(mood, size);
   const a = mood.art;
-  return `<img class="luke-photo${a.bob ? " lk-bob" : ""}" src="${url}" width="${size}" height="${size}"
-    alt="Luke(${esc(mood.name)})" style="--tilt:${a.tilt}deg${a.faceX ? ";--flip:-1" : ""}">`;
+  // 写真(透過なし)は丸く抜く。まわりの床や部屋が目立たなくなる
+  return `<img class="luke-photo${e.r ? " round" : ""}${a.bob ? " lk-bob" : ""}" src="${e.u}"
+    width="${size}" height="${size}" alt="Luke(${esc(mood.name)})"
+    style="--tilt:${a.tilt}deg${a.faceX ? ";--flip:-1" : ""}">`;
+}
+
+/* ── 切り抜き ─────────────────────────────────────────
+   写真をそのまま入れると、床や部屋まで一緒に入ってしまう。
+   その場で顔だけ切り出せるようにした。 */
+
+let cropJob = null;   // {slot, img, zoom, x, y, V}
+
+function openLukeCrop(slot, img) {
+  const V = 240;
+  const cover = Math.max(V / img.naturalWidth, V / img.naturalHeight);
+  cropJob = { slot, img, cover, zoom: 1, V,
+              x: (V - img.naturalWidth * cover) / 2, y: (V - img.naturalHeight * cover) / 2 };
+  renderLukeCrop();
+}
+
+function cropClamp() {
+  const j = cropJob, s = j.cover * j.zoom;
+  const w = j.img.naturalWidth * s, h = j.img.naturalHeight * s;
+  j.x = Math.min(0, Math.max(j.V - w, j.x));
+  j.y = Math.min(0, Math.max(j.V - h, j.y));
+}
+
+function renderLukeCrop() {
+  const box = $("#lukeArtBox");
+  const j = cropJob;
+  if (!box || !j) return;
+  const slot = LUKE_ART_SLOTS.find((x) => x.id === j.slot);
+  cropClamp();
+  const s = j.cover * j.zoom;
+  box.innerHTML = `
+    <p class="cs"><b>「${esc(slot.name)}」に入れる部分を選んでください。</b><br>
+      ドラッグで位置、スライダーで大きさが変えられます。<b>顔が枠いっぱいになるくらい</b>が目安です。</p>
+    <div class="lk-crop" id="lkCrop" style="width:${j.V}px;height:${j.V}px">
+      <img id="lkCropImg" src="${j.img.src}"
+        style="width:${(j.img.naturalWidth * s).toFixed(1)}px;left:${j.x.toFixed(1)}px;top:${j.y.toFixed(1)}px">
+      <div class="lk-crop-ring"></div>
+    </div>
+    <label class="lk-crop-zoom">大きさ
+      <input type="range" id="lkCropZoom" min="100" max="320" value="${Math.round(j.zoom * 100)}">
+    </label>
+    <div class="lk-crop-btns">
+      <button class="btn btn-sm" id="lkCropOk">これにする</button>
+      <button class="btn btn-sm ghost" id="lkCropNg">やめる</button>
+    </div>`;
+
+  const area = $("#lkCrop"), im = $("#lkCropImg");
+  let drag = null;
+  const move = (e) => {
+    if (!drag) return;
+    const p = e.touches ? e.touches[0] : e;
+    j.x = drag.x + (p.clientX - drag.px);
+    j.y = drag.y + (p.clientY - drag.py);
+    cropClamp();
+    im.style.left = j.x.toFixed(1) + "px"; im.style.top = j.y.toFixed(1) + "px";
+    e.preventDefault();
+  };
+  const down = (e) => {
+    const p = e.touches ? e.touches[0] : e;
+    drag = { x: j.x, y: j.y, px: p.clientX, py: p.clientY };
+  };
+  const up = () => { drag = null; };
+  area.addEventListener("mousedown", down);
+  area.addEventListener("touchstart", down, { passive: true });
+  window.addEventListener("mousemove", move);
+  area.addEventListener("touchmove", move, { passive: false });
+  window.addEventListener("mouseup", up);
+  area.addEventListener("touchend", up);
+
+  $("#lkCropZoom").oninput = (e) => {
+    const old = j.cover * j.zoom;
+    j.zoom = Number(e.target.value) / 100;
+    const nw = j.cover * j.zoom;
+    // 枠の中心を保ったまま拡大する
+    j.x = j.V / 2 - (j.V / 2 - j.x) * (nw / old);
+    j.y = j.V / 2 - (j.V / 2 - j.y) * (nw / old);
+    cropClamp();
+    im.style.width = (j.img.naturalWidth * nw).toFixed(1) + "px";
+    im.style.left = j.x.toFixed(1) + "px"; im.style.top = j.y.toFixed(1) + "px";
+  };
+
+  $("#lkCropNg").onclick = () => { cropJob = null; renderLukeArt(); };
+  $("#lkCropOk").onclick = () => {
+    const sc = j.cover * j.zoom;
+    const entry = cropLukeImage(j.img, { x: -j.x / sc, y: -j.y / sc, w: j.V / sc });
+    const cur = loadLukeArt();
+    cur[j.slot] = entry;
+    if (!saveLukeArt(cur)) { toast("端末の空きが足りません。ほかの絵を減らしてください"); return; }
+    cropJob = null;
+    toast("Lukeの絵を変えました");
+    renderLuke();
+  };
 }
 
 /* ── Lukeの絵を差しかえる ───────────────────────────────
@@ -2515,6 +2609,7 @@ function lukeFigure(mood, size = 116) {
 function renderLukeArt() {
   const box = $("#lukeArtBox");
   if (!box) return;
+  if (cropJob) return renderLukeCrop();
   const art = loadLukeArt();
   const kb = Math.round(lukeArtBytes() / 1024);
   box.innerHTML = `
@@ -2526,12 +2621,12 @@ function renderLukeArt() {
     <div class="lk-art-grid">
       ${LUKE_ART_SLOTS.map((sl) => `<div class="lk-as ${art[sl.id] ? "has" : ""}">
         <label class="lk-as-drop">
-          ${art[sl.id] ? `<img src="${art[sl.id]}" alt="">` : `<span class="lk-as-plus">＋</span>`}
+          ${art[sl.id]?.u ? `<img src="${art[sl.id].u}" class="${art[sl.id].r ? "round" : ""}" alt="">` : `<span class="lk-as-plus">＋</span>`}
           <input type="file" accept="image/*" data-art="${sl.id}" hidden>
         </label>
         <b>${esc(sl.name)}</b>
         <span class="lk-as-hint">${esc(sl.hint)}</span>
-        ${art[sl.id] ? `<button class="linklike" data-artdel="${sl.id}">消す</button>` : ""}
+        ${art[sl.id]?.u ? `<button class="linklike" data-artdel="${sl.id}">消す</button>` : ""}
       </div>`).join("")}
     </div>
     <p class="cs">登録:${lukeArtCount()} / ${LUKE_ART_SLOTS.length}枚(合計 約${kb}KB)
@@ -2540,17 +2635,9 @@ function renderLukeArt() {
   box.querySelectorAll("[data-art]").forEach((inp) => inp.onchange = async () => {
     const f = inp.files?.[0];
     if (!f) return;
-    if (!/^image\//.test(f.type)) return void toast("画像ファイルを選んでください");
     try {
-      const url = await shrinkLukeImage(f);
-      const cur = loadLukeArt();
-      cur[inp.dataset.art] = url;
-      if (!saveLukeArt(cur)) {
-        toast("端末の空きが足りません。ほかの絵を減らしてください");
-        return;
-      }
-      toast("Lukeの絵を変えました");
-      renderLuke();
+      const img = await readImage(f);
+      openLukeCrop(inp.dataset.art, img);       // まず切り抜き画面へ
     } catch (e) {
       toast(e.message || "読み込めませんでした");
     }

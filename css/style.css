@@ -1139,3 +1139,28 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 @media (prefers-reduced-motion: reduce) {
   .luke-photo { transition: none !important; animation: none !important; }
 }
+
+/* 写真は丸く抜く。まわりの床や部屋が目立たなくなる */
+.luke-photo.round { border-radius: 50%; object-fit: cover;
+  box-shadow: 0 2px 10px rgba(28,35,51,.14); background: var(--card); }
+.lk-as-drop img.round { border-radius: 50%; }
+
+/* 切り抜き */
+.lk-crop { position: relative; overflow: hidden; border-radius: 14px; margin: 12px auto;
+  background: #f0eee9; touch-action: none; cursor: grab; user-select: none; }
+.lk-crop:active { cursor: grabbing; }
+.lk-crop img { position: absolute; max-width: none; pointer-events: none; user-select: none; }
+.lk-crop-ring { position: absolute; inset: 0; border-radius: 50%;
+  box-shadow: 0 0 0 999px rgba(255,255,255,.55); pointer-events: none; }
+.lk-crop-zoom { display: block; font-size: 12px; color: var(--ink2); max-width: 240px; margin: 0 auto; }
+.lk-crop-zoom input { -webkit-appearance: none; appearance: none; display: block;
+  width: 100%; height: 26px; margin-top: 4px; background: transparent; }
+.lk-crop-zoom input::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--line); }
+.lk-crop-zoom input::-moz-range-track { height: 6px; border-radius: 3px; background: var(--line); }
+.lk-crop-zoom input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+  width: 24px; height: 24px; margin-top: -9px; border-radius: 50%; background: var(--accent);
+  border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.lk-crop-zoom input::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff; }
+.lk-crop-btns { display: flex; gap: 8px; max-width: 240px; margin: 12px auto 0; }
+.lk-crop-btns .btn { flex: 1; max-width: none; }

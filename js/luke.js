@@ -185,50 +185,71 @@ const MOOD_TO_SLOT = {
 };
 
 function loadLukeArt() {
-  try { return JSON.parse(localStorage.getItem(LUKE_ART_KEY) || "{}") || {}; }
-  catch { return {}; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(LUKE_ART_KEY) || "{}") || {};
+    // 昔の形式(文字列のまま)も読めるようにしておく
+    const out = {};
+    for (const [k, v] of Object.entries(raw)) out[k] = typeof v === "string" ? { u: v, r: false } : v;
+    return out;
+  } catch { return {}; }
 }
 function saveLukeArt(art) {
   try { localStorage.setItem(LUKE_ART_KEY, JSON.stringify(art)); return true; }
   catch { return false; }              // 容量オーバー。呼んだ側で知らせる
 }
-function lukeArtUrl(moodId) {
+/** そのきもちで使う絵。無ければ「ふつう」に落ちる */
+function lukeArtEntry(moodId) {
   const art = loadLukeArt();
   return art[MOOD_TO_SLOT[moodId] || "base"] || art.base || null;
 }
+function lukeArtUrl(moodId) { return lukeArtEntry(moodId)?.u || null; }
 function lukeArtCount() { return Object.keys(loadLukeArt()).length; }
 function lukeArtBytes() {
-  return Object.values(loadLukeArt()).reduce((n, v) => n + (v ? v.length : 0), 0);
+  return Object.values(loadLukeArt()).reduce((n, v) => n + (v?.u ? v.u.length : 0), 0);
 }
 
-/**
- * 選ばれた絵を小さくして data URL にする。
- * 透過を保つため webp を優先し、使えない端末では png に落とす。
- */
-function shrinkLukeImage(file, max = 300) {
+/** ファイルを Image として読み込む */
+function readImage(file) {
   return new Promise((resolve, reject) => {
+    if (!/^image\//.test(file.type)) return reject(new Error("画像ファイルを選んでください"));
     const fr = new FileReader();
     fr.onerror = () => reject(new Error("読み込めませんでした"));
     fr.onload = () => {
       const img = new Image();
       img.onerror = () => reject(new Error("画像として開けませんでした"));
-      img.onload = () => {
-        const r = Math.min(1, max / Math.max(img.width, img.height));
-        const w = Math.round(img.width * r), h = Math.round(img.height * r);
-        const c = document.createElement("canvas");
-        c.width = w; c.height = h;
-        const ctx = c.getContext("2d");
-        ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, 0, 0, w, h);
-        let out = "";
-        try { out = c.toDataURL("image/webp", 0.9); } catch { out = ""; }
-        if (!out.startsWith("data:image/webp")) out = c.toDataURL("image/png");
-        resolve(out);
-      };
+      img.onload = () => resolve(img);
       img.src = fr.result;
     };
     fr.readAsDataURL(file);
   });
+}
+
+/**
+ * 切り抜いて小さくする。
+ * @param img   元の画像
+ * @param crop  {x, y, w} 元画像の座標での正方形の切り抜き範囲
+ * @param out   出力の一辺(px)
+ * 透過を保つため webp を優先し、使えない端末では png に落とす。
+ * 透過が【無い】= 写真とみなして、丸く表示する目印(r)をつける。
+ */
+function cropLukeImage(img, crop, out = 300) {
+  const c = document.createElement("canvas");
+  c.width = out; c.height = out;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, crop.x, crop.y, crop.w, crop.w, 0, 0, out, out);
+
+  // 透過があるか調べる(間引いて見るだけで十分)
+  let hasAlpha = false;
+  try {
+    const d = ctx.getImageData(0, 0, out, out).data;
+    for (let i = 3; i < d.length; i += 4 * 37) { if (d[i] < 250) { hasAlpha = true; break; } }
+  } catch { hasAlpha = true; }
+
+  let url = "";
+  try { url = c.toDataURL("image/webp", 0.9); } catch { url = ""; }
+  if (!url.startsWith("data:image/webp")) url = c.toDataURL("image/png");
+  return { u: url, r: !hasAlpha };      // 写真(不透明)なら丸く出す
 }
 
 /* ── 状態 ───────────────────────────────────────────── */
