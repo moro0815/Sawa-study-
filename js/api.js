@@ -82,10 +82,10 @@ function trimHistory(messages) {
   const out = [];
   for (let i = recent.length - 1; i >= 0; i--) {
     const m = recent[i];
-    if (Array.isArray(m.content) && m.content.some((b) => b.type === "image")) {
+    if (Array.isArray(m.content) && m.content.some((b) => b.type === "image" || b.type === "document")) {
       if (imageKept) {
         const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
-        out.unshift({ role: m.role, content: "【写真を送りました】" + (text ? "\n" + text : "") });
+        out.unshift({ role: m.role, content: "【写真・スキャンを送りました】" + (text ? "\n" + text : "") });
         continue;
       }
       imageKept = true;

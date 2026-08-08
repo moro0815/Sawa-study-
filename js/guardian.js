@@ -20,7 +20,16 @@ function detectAlerts(S) {
   const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
   const last = sorted.at(-1);
 
+  const hw = typeof homeworkSummary === "function" ? homeworkSummary(S.homework, S.dailyMinutes) : null;
+
   /* ── ポジティブ ── */
+  // 宿題を終えている
+  if (hw && hw.done7 >= 3 && !hw.stuckCount) out.push({ level:"good", icon:"📝",
+    title:`今週 ${hw.done7} 件の宿題を終えました`,
+    body:"学校のぶんもAI家庭教師のぶんも、自分で片づけられています。量ではなく「最後までやり切ったこと」を認めてあげてください。",
+    say:"「宿題、自分で終わらせられたんだね」" });
+
+
   // 連続学習
   let streak = 0;
   for (let i = 0; i < 30; i++) {
@@ -55,6 +64,19 @@ function detectAlerts(S) {
   }
 
   /* ── 注意 ── */
+  // 「わからない」が放置されている
+  if (hw && hw.stuckCount >= 1) out.push({ level:"warn", icon:"❓",
+    title:`「わからない」印の問題が ${hw.stuckCount} 問あります`,
+    body:"本人が自分でつまずきを申告できている状態です。これは良い兆候で、隠していないということです。放置されると自信が下がるので、AI家庭教師に説明してもらうよう一声かけてあげてください。責める必要はまったくありません。",
+    say:"「わからないって言えたの、えらいね。一緒に見てみようか」" });
+
+  // 宿題がたまっている
+  if (hw && hw.openCount >= 4) out.push({ level:"warn", icon:"📚",
+    title:`未提出の宿題が ${hw.openCount} 件たまっています`,
+    body:"量が多すぎる可能性があります。「なんで終わってないの」ではなく、どれから手をつけるかを一緒に決めてあげてください。1日の目安時間の設定が実態に合っていないかもしれません。",
+    say:"「どれから片づける? 一緒に順番決めよっか」" });
+
+
   // 学習の中断
   if (last) {
     const gap = Math.floor((now - new Date(last.date).getTime()) / DAYMS);

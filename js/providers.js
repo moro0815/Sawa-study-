@@ -271,7 +271,8 @@ function toGeminiContents(messages) {
     const parts = [];
     for (const b of m.content) {
       if (b.type === "text") { if (b.text) parts.push({ text: b.text }); }
-      else if (b.type === "image") parts.push({ inlineData: { mimeType: b.source.media_type, data: b.source.data } });
+      else if (b.type === "image" || b.type === "document")
+        parts.push({ inlineData: { mimeType: b.source.media_type, data: b.source.data } });
       else if (b.type === "tool_use") parts.push({ functionCall: { name: b.name, args: b.input || {} } });
       else if (b.type === "tool_result") {
         let value;
@@ -390,6 +391,7 @@ function toOpenAIMessages(system, messages) {
 function openaiPart(b) {
   if (b.type === "text") return { type: "text", text: b.text };
   if (b.type === "image") return { type: "image_url", image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } };
+  // OpenAI互換は提供元ごとにPDFの扱いが違うため送らない(app.js側で取り込みを止めている)
   return null;
 }
 

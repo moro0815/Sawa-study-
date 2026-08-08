@@ -25,6 +25,7 @@ const defaults = () => ({
   hyotei: {},            // 高校の評定平均 {ラベル: 値}
   dailyMinutes: null,    // 1日の学習時間(分)
   goals: [],             // [{text, deadline, at}]
+  homework: [],          // [{id, source, title, items, due, ...}] 学校ぶん＋AIぶん
   sessions: [],          // [{date, answered, correct, minutes}]
   career: DEFAULT_CAREER,      // 今の志望(変数。固定しない)
   dreamHistory: [],            // [{career, at, note}] 過去の夢も消さずに残す
@@ -40,7 +41,7 @@ const defaults = () => ({
 });
 
 let S = load();
-let pendingImage = null;
+let pendingFiles = [];   // 送信待ちの写真・スキャン(複数可)
 let busy = false;
 let mapFilter = "math";
 
@@ -226,6 +227,90 @@ async function runTool(name, input) {
       };
     }
 
+    case "get_homework": {
+      const open = openAssignments(S.homework);
+      return {
+        summary: homeworkSummary(S.homework, S.dailyMinutes),
+        difficulty: difficultyAdvice(S.homework),
+        target_accuracy: TARGET_ACCURACY,
+        remaining_minutes: remainingMinutes(S.homework, S.dailyMinutes),
+        due_today: dueTodayAssignments(S.homework).map((a) => a.id),
+        open: open.map((a) => ({
+          homework_id: a.id, source: a.source, title: a.title, due: a.due,
+          minutes: a.minutes || estimateMinutes(a),
+          progress: assignmentProgress(a),
+          items: a.items.map((i) => ({ n: i.n, q: i.q, status: i.status, correct: i.correct, concept_id: i.conceptId })),
+        })),
+        note: "残り時間が5分未満なら新しい宿題を出さないでください。stuck の問題があれば最優先で説明してください。",
+      };
+    }
+
+    case "suggest_homework_items": {
+      const cands = homeworkCandidates(S.mem, { limit: input.limit || 6, subject: input.subject });
+      return {
+        candidates: cands,
+        difficulty: difficultyAdvice(S.homework),
+        note: "復習を約2/3、新規を約1/3にし、単元が連続しないよう並べてあります。この順のまま出題してください。",
+      };
+    }
+
+    case "assign_homework": {
+      const rest = remainingMinutes(S.homework, S.dailyMinutes);
+      if (rest < MIN_AI_MINUTES) {
+        return { assigned: false, reason: "no_time",
+          message: `今日の残り時間が${rest}分しかありません。宿題は出さず、「今日は学校のぶんで十分」と伝えてください。` };
+      }
+      const items = (input.items || []).slice(0, MAX_AI_ITEMS);
+      if (!items.length) return { assigned: false, reason: "no_items", message: "items が空です。" };
+      const a = newAssignment({
+        source: "ai", title: input.title, subject: input.subject,
+        minutes: Math.min(input.minutes || Math.round(items.length * 2.5), rest),
+        due: addDaysISO(input.due_in_days ?? 0),
+        reason: input.reason,
+        conceptIds: items.map((i) => i.concept_id).filter(Boolean),
+        items: items.map((i) => ({ q: i.q, hint: i.hint, conceptId: i.concept_id })),
+      });
+      S.homework.push(a); save(); renderAll();
+      toast("📝 宿題が届きました");
+      return { assigned: true, homework_id: a.id, count: a.items.length, due: a.due, minutes: a.minutes };
+    }
+
+    case "record_school_homework": {
+      const items = (input.items || []).slice(0, 30);
+      if (!items.length) return { recorded: false, message: "items が空です。読み取れた問題を入れてください。" };
+      const a = newAssignment({
+        source: "school", title: input.title, subject: input.subject,
+        due: addDaysISO(input.due_in_days ?? 0), note: input.note,
+        conceptIds: items.map((i) => i.concept_id).filter(Boolean),
+        items: items.map((i) => ({ q: i.q, conceptId: i.concept_id })),
+      });
+      S.homework.push(a); save(); renderAll();
+      toast("📚 学校の宿題を登録しました");
+      return {
+        recorded: true, homework_id: a.id, count: a.items.length, due: a.due,
+        remaining_minutes_after: remainingMinutes(S.homework, S.dailyMinutes),
+        note: "登録しました。いきなり答えを教えず、1問目から一緒に進めてください。",
+      };
+    }
+
+    case "record_homework_result": {
+      const a = S.homework.find((x) => x.id === input.homework_id);
+      if (!a) return { error: "unknown homework_id", hint: "get_homework で今の宿題IDを確認してください" };
+      const it = a.items.find((x) => x.n === input.item_n);
+      if (!it) return { error: "unknown item_n", total: a.items.length };
+      it.status = input.status;
+      if (input.correct != null) it.correct = input.correct;
+      if (input.confidence != null) it.confidence = input.confidence;
+      const p = assignmentProgress(a);
+      // stuck が残っているうちは終わりにしない
+      if (p.done === p.total && !a.doneAt) { a.doneAt = Date.now(); toast("✅ 宿題おわり!"); }
+      save(); renderAll();
+      return {
+        ok: true, progress: p, finished: !!a.doneAt,
+        next_difficulty: a.doneAt ? difficultyAdvice(S.homework) : null,
+      };
+    }
+
     case "get_status": {
       const sm = subjectMastery(S.mem);
       const w = weaknessSummary(S.mem);
@@ -348,7 +433,7 @@ async function send(override) {
   if (busy) return;
   const inp = $("#input");
   const text = (override ?? inp.value).trim();
-  if (!text && !pendingImage) return;
+  if (!text && !pendingFiles.length) return;
   if (!curKey()) { addMsg("err", "APIキーが未設定です。「保護者」タブで設定してください。"); go("parent"); return; }
 
   busy = true; $("#send").disabled = true;
@@ -362,12 +447,13 @@ async function send(override) {
   }
 
   let content, imgUrl = null;
-  if (pendingImage) {
-    content = [
-      { type: "image", source: { type: "base64", media_type: pendingImage.mediaType, data: pendingImage.data } },
-      { type: "text", text: text || "この問題を一緒に解きたいです。" },
-    ];
-    imgUrl = pendingImage.previewUrl;
+  if (pendingFiles.length) {
+    content = pendingFiles.map((f) => f.kind === "pdf"
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.data } }
+      : { type: "image", source: { type: "base64", media_type: f.mediaType, data: f.data } });
+    const n = pendingFiles.length;
+    content.push({ type: "text", text: text || (n > 1 ? `${n}枚ぶんの宿題です。一緒に解きたいです。` : "この問題を一緒に解きたいです。") });
+    imgUrl = pendingFiles.find((f) => f.previewUrl)?.previewUrl || null;
   } else content = text;
 
   // 確信度が申告済みなら文脈に混ぜる
@@ -393,6 +479,7 @@ async function send(override) {
       system: buildSystemPrompt(S.persona, {
         name: S.name, grade: S.grade, career: curCareer(),
         pastDreams: (S.dreamHistory || []).map((d) => CAREER_MAP[d.career]?.name).filter(Boolean),
+        homeworkStatus: homeworkStatusText(S.homework, S.dailyMinutes),
       }, statusSummary()),
       messages: S.apiMessages,
       tools: TOOLS,
@@ -422,11 +509,68 @@ async function send(override) {
   }
 }
 
-function clearPhoto() { pendingImage = null; $("#preview").hidden = true; $("#photoIn").value = ""; }
+function clearPhoto() {
+  pendingFiles = [];
+  $("#preview").hidden = true; $("#preview").innerHTML = "";
+  $("#cameraIn").value = ""; $("#scanIn").value = "";
+}
+
+/** 取り込んだファイルをプレビューに並べる */
+function renderPreview() {
+  const box = $("#preview");
+  if (!pendingFiles.length) { box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  box.innerHTML = pendingFiles.map((f, i) => f.kind === "pdf"
+    ? `<div class="pv-item pv-pdf" data-i="${i}"><span>📄</span><b>${esc(f.name)}</b><button class="pv-x" data-i="${i}">✕</button></div>`
+    : `<div class="pv-item" data-i="${i}"><img src="${f.previewUrl}" alt="取り込んだ画像 ${i + 1}"><button class="pv-x" data-i="${i}">✕</button></div>`
+  ).join("") + `<button class="pv-clear" id="pvClear">すべて取り消す</button>`;
+  box.querySelectorAll(".pv-x").forEach((b) => b.onclick = () => {
+    pendingFiles.splice(Number(b.dataset.i), 1); renderPreview();
+  });
+  $("#pvClear").onclick = clearPhoto;
+}
+
+/** カメラ/スキャンから受け取ったファイルを取り込む */
+async function intakeFiles(fileList, how) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  if (pendingFiles.length + files.length > 6) { toast("いちどに送れるのは6枚までです"); return; }
+  for (const f of files) {
+    try {
+      if (f.type === "application/pdf") {
+        if (S.provider === "openai") { toast("このAIではPDFを送れません。画像で取り込んでください"); continue; }
+        if (f.size > 4.5 * 1024 * 1024) { toast("PDFが大きすぎます(4.5MBまで)"); continue; }
+        pendingFiles.push({ kind: "pdf", name: f.name, data: await fileToBase64(f) });
+      } else {
+        const img = await processImage(f);
+        pendingFiles.push({ kind: "image", name: f.name, ...img });
+      }
+    } catch (e) { toast(String(e.message || e)); }
+  }
+  renderPreview();
+  if (pendingFiles.length) {
+    go("study");
+    if (!$("#input").value) {
+      $("#input").value = how === "camera"
+        ? "学校の宿題を撮りました。一緒に解きたいです。"
+        : "学校の宿題をスキャンしました。一緒に解きたいです。";
+    }
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1]);
+    r.onerror = () => rej(new Error("ファイルを読み込めませんでした"));
+    r.readAsDataURL(file);
+  });
+}
 
 /* ═══════════════ 描画 ═══════════════ */
 
 function renderAll() {
+  renderHomework();
   applyStage();
   renderTop(); renderHome(); renderJourney(); renderLetters(); renderThemes();
   renderWeak(); renderGrade(); renderPlan(); renderParent();
@@ -1250,6 +1394,11 @@ function init() {
 
   // ナビ
   $$(".nb").forEach((b) => b.onclick = () => go(b.dataset.go));
+  $("#askHomework").onclick = () => {
+    S.persona = "sensei"; renderPersona(); go("study");
+    send("今日の宿題を出してください。学校のぶんと合わせて、無理のない量でお願いします。");
+  };
+  $("#uploadHomework").onclick = () => { go("study"); showScanHelp(); };
   $("#startStudy").onclick = () => { S.persona = "sensei"; renderPersona(); go("study"); send("今日の分をやりたいです。まず何から?"); };
 
   // チャット
@@ -1268,14 +1417,10 @@ function init() {
   });
 
   // 写真
-  $("#photoIn").onchange = async (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    try {
-      pendingImage = await processImage(f);
-      $("#previewImg").src = pendingImage.previewUrl; $("#preview").hidden = false; go("study");
-    } catch (_) { toast("画像を読み込めませんでした"); }
-  };
-  $("#rmPhoto").onclick = clearPhoto;
+  $("#cameraIn").onchange = (e) => intakeFiles(e.target.files, "camera");
+  $("#scanIn").onchange = (e) => intakeFiles(e.target.files, "scan");
+  $("#scanHelp").onclick = showScanHelp;
+  
 
   // 成績
   $("#addGrade").onclick = () => {
@@ -1461,6 +1606,96 @@ async function fetchModelList() {
     btn.disabled = false; btn.textContent = "使えるモデルの一覧を取得";
     setTimeout(() => ($("#settingsMsg").textContent = ""), 6000);
   }
+}
+
+
+/* ═══════════════ 宿題 ═══════════════ */
+
+function renderHomework() {
+  const open = openAssignments(S.homework);
+  const rest = remainingMinutes(S.homework, S.dailyMinutes);
+  const sum = homeworkSummary(S.homework, S.dailyMinutes);
+
+  $("#hwNote").textContent = open.length ? `${open.length}件(今日ぶん ${sum.todayCount}件)` : "";
+
+  if (!open.length) {
+    $("#hwList").innerHTML = `<p class="cs hw-empty">今日出ている宿題はありません。<br>
+      学校の宿題は「取り込む」から、AI先生の宿題は上のボタンから出してもらえます。</p>`;
+  } else {
+    $("#hwList").innerHTML = open.map((a) => {
+      const p = assignmentProgress(a);
+      const tag = a.source === "school" ? '<span class="hw-tag hw-school">学校</span>' : '<span class="hw-tag hw-ai">AI先生</span>';
+      const overdue = a.due < todayISO();
+      const later = a.due > todayISO();
+      return `<div class="hw ${p.done === p.total ? "hw-done" : ""}">
+        <div class="hw-head">
+          <div>${tag}<b class="hw-title">${esc(a.title)}</b></div>
+          <span class="hw-meta">${p.done}/${p.total}問 ・ 約${a.minutes || estimateMinutes(a)}分${overdue ? ' ・ <b class="hw-late">期限すぎ</b>' : later ? ` ・ ${esc(a.due.slice(5))}まで` : ""}${p.stuck ? ` ・ <b class="hw-late">わからない${p.stuck}問</b>` : ""}</span>
+        </div>
+        ${a.reason ? `<p class="hw-reason">${esc(a.reason)}</p>` : ""}
+        <div class="bar"><i style="width:${p.pct}%"></i></div>
+        <div class="hw-items">${a.items.map((it) => `
+          <div class="hw-item ${it.status}">
+            <span class="hw-n">${it.n}</span>
+            <span class="hw-q">${esc(it.q)}</span>
+            <span class="hw-mark">${it.status === "todo" ? "" : it.correct === true ? "○" : it.correct === false ? "×" : "?"}</span>
+          </div>`).join("")}</div>
+        <div class="hw-btns">
+          <button class="btn btn-sm" data-hw-start="${a.id}">この宿題をやる</button>
+          <button class="btn btn-sm btn-ghost" data-hw-stuck="${a.id}">わからないところがある</button>
+        </div>
+      </div>`;
+    }).join("");
+
+    $$("[data-hw-start]").forEach((b) => b.onclick = () => startHomework(b.dataset.hwStart));
+    $$("[data-hw-stuck]").forEach((b) => b.onclick = () => askHomeworkHelp(b.dataset.hwStuck));
+  }
+
+  const budget = S.dailyMinutes || DEFAULT_MINUTES;
+  $("#hwBudget").innerHTML = sum.stuckCount
+    ? `⚠ 「わからない」が ${sum.stuckCount}問 あります。まずそこから一緒に見ましょう。`
+    : `今日の目安 ${budget}分 のうち、あと <b>約${rest}分</b> ぶん入ります。` +
+      (rest < MIN_AI_MINUTES ? " 今日はもう十分です。" : "") +
+      (sum.accuracy7 != null ? `<br>直近7日の正答率 ${sum.accuracy7}%(ねらいは85%前後です)` : "");
+}
+
+function startHomework(id) {
+  const a = S.homework.find((x) => x.id === id);
+  if (!a) return;
+  S.persona = "sensei"; renderPersona(); go("study");
+  const next = a.items.find((i) => i.status === "todo") || a.items[0];
+  send(`「${a.title}」の${next.n}問目からやりたいです。答えは先に言わないで、一緒に進めてください。`);
+}
+
+function askHomeworkHelp(id) {
+  const a = S.homework.find((x) => x.id === id);
+  if (!a) return;
+  S.persona = "sensei"; renderPersona(); go("study");
+  send(`「${a.title}」でわからないところがあります。どこがわからないか一緒に見つけてください。`);
+}
+
+function showScanHelp() {
+  addMsg("sys", "");
+  const el = $("#chat").lastElementChild;
+  el.innerHTML = `<div class="scan-help">
+    <b>📄 宿題をきれいに取り込むには</b>
+    <p><b>いちばん読み取りやすいのは、iPhoneの「書類スキャン」です。</b>
+      斜めやゆがみを自動でまっすぐに直し、影を飛ばしてくれるので、
+      手で持って撮った写真よりずっと正確に読めます。</p>
+    <ol>
+      <li><b>メモ</b>アプリを開いて、新しいメモを作る</li>
+      <li>カメラのマークをタップ →「<b>書類をスキャン</b>」</li>
+      <li>宿題のページにかざす(自動で撮れます)。複数ページなら続けて撮る</li>
+      <li>「保存」→ 画像を長押しして「<b>写真に保存</b>」</li>
+      <li>このアプリに戻って「<b>スキャン</b>」ボタン → 保存した画像を選ぶ</li>
+    </ol>
+    <p><b>ファイル</b>アプリの「…」→「書類をスキャン」でも同じことができます。
+      こちらはPDFで保存されますが、そのまま送れます(Gemini・Claudeのみ)。</p>
+    <p class="scan-tip">📷「カメラ」ボタンはその場で1枚だけ撮るとき用です。急ぐときはこちらでも大丈夫。
+      <b>明るい場所で、影が入らないように、まっすぐ上から</b>撮ってください。</p>
+  </div>`;
+  $("#chat").scrollTop = $("#chat").scrollHeight;
+  go("study");
 }
 
 init();

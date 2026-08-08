@@ -184,13 +184,68 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .qa { flex-shrink: 0; background: #fff; border: 1px solid var(--line); border-radius: 99px; padding: 7px 13px; font-size: 12px; cursor: pointer; font-family: inherit; color: var(--ink2); white-space: nowrap; }
 
 .composer { display: flex; align-items: flex-end; gap: 8px; background: var(--card); border-radius: 22px; box-shadow: var(--sh); padding: 7px 9px; }
-.cam { font-size: 20px; cursor: pointer; padding: 5px; flex-shrink: 0; }
+
 #input { flex: 1; border: none; outline: none; resize: none; font-size: 16px; font-family: inherit; background: transparent; max-height: 110px; line-height: 1.6; padding: 7px 0; color: var(--ink); }
 .send { background: var(--accent); color: #fff; border: none; width: 38px; height: 38px; border-radius: 50%; font-size: 17px; cursor: pointer; flex-shrink: 0; }
 .send:disabled { opacity: .4; }
-.preview { position: relative; margin-top: 9px; display: inline-block; }
-.preview img { max-height: 110px; border-radius: 9px; border: 1px solid var(--line); display: block; }
-.preview button { position: absolute; top: -7px; right: -7px; background: var(--red); color: #fff; border: none; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font-size: 11px; }
+/* 取り込み(カメラ / スキャン) */
+.intake { display: flex; gap: 7px; margin-bottom: 8px; }
+.intake-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 8px 4px;
+  cursor: pointer; box-shadow: var(--sh); font-family: inherit; }
+.intake-btn:active { transform: scale(.97); }
+.intake-btn.ghost { background: transparent; box-shadow: none; }
+.intake-ic { font-size: 17px; line-height: 1; }
+.intake-l { font-size: 10.5px; font-weight: 600; color: var(--ink2); }
+
+.preview { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 7px; align-items: flex-start; }
+.pv-item { position: relative; }
+.pv-item img { max-height: 92px; border-radius: 9px; border: 1px solid var(--line); display: block; }
+.pv-pdf { display: flex; align-items: center; gap: 5px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 9px; padding: 9px 11px; font-size: 11px; max-width: 160px; }
+.pv-pdf b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-x { position: absolute; top: -7px; right: -7px; background: var(--red); color: #fff; border: none;
+  width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font-size: 11px; }
+.pv-pdf .pv-x { position: static; width: 18px; height: 18px; flex-shrink: 0; }
+.pv-clear { align-self: center; background: none; border: none; color: var(--ink3); font-size: 11px;
+  text-decoration: underline; cursor: pointer; font-family: inherit; }
+
+/* スキャンの手引き */
+.scan-help { font-size: 12px; line-height: 1.85; }
+.scan-help b { color: var(--ink); }
+.scan-help p { margin: 6px 0; color: var(--ink2); }
+.scan-help ol { margin: 6px 0 6px 17px; color: var(--ink2); }
+.scan-help li { margin-bottom: 3px; }
+.scan-tip { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; }
+
+/* 宿題 */
+.hw-actions { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+.hw-empty { text-align: center; padding: 14px 4px; line-height: 1.9; }
+.hw { border: 1px solid var(--line); border-radius: 12px; padding: 11px; margin-bottom: 9px; }
+.hw-done { opacity: .6; }
+.hw-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.hw-head > div { flex: 1; min-width: 0; }
+.hw-title { font-size: 13px; }
+.hw-meta { font-size: 10.5px; color: var(--ink3); white-space: nowrap; }
+.hw-late { color: var(--red); }
+.hw-tag { display: inline-block; font-size: 9.5px; font-weight: 700; border-radius: 5px; padding: 2px 5px; margin-right: 6px; }
+.hw-tag.hw-school { background: #eef1ff; color: var(--accent); }
+.hw-tag.hw-ai { background: #e8f6ef; color: var(--green); }
+.hw-reason { font-size: 11px; color: var(--ink2); margin: 5px 0 7px; line-height: 1.7; }
+.hw .bar { height: 5px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+.hw .bar i { display: block; height: 100%; background: var(--green); border-radius: 99px; transition: width .4s; }
+.hw-items { margin: 9px 0; }
+.hw-item { display: flex; gap: 7px; align-items: baseline; font-size: 11.5px; color: var(--ink2);
+  padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.hw-item:last-child { border: none; }
+.hw-item.stuck { color: var(--amber); font-weight: 600; }
+.hw-item.done { color: var(--ink3); }
+.hw-n { flex-shrink: 0; width: 17px; height: 17px; border-radius: 50%; background: var(--line);
+  color: var(--ink2); font-size: 9.5px; display: grid; place-items: center; font-weight: 700; }
+.hw-q { flex: 1; line-height: 1.6; }
+.hw-mark { flex-shrink: 0; font-weight: 700; }
+.hw-btns { display: flex; gap: 6px; }
+.hw-btns .btn { flex: 1; font-size: 12.5px; padding: 9px 6px; }
 
 /* ── 弱点 ── */
 .overconf { display: flex; align-items: center; gap: 14px; }

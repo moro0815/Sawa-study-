@@ -222,6 +222,102 @@ const TOOLS = [
       required: ["text"],
     },
   },
+  {
+    name: "get_homework",
+    description:
+      "今出ている宿題(学校ぶん・AIぶん)、今日まだ使える時間、直近の正答率と難易度の調整方針を取得する。" +
+      "宿題を出す前・答え合わせをする前には【必ず】これを呼ぶこと。呼ばずに量や難しさを決めてはいけない。",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "suggest_homework_items",
+    description:
+      "AIが宿題を作るための候補概念を取得する。復習と新規を適切な比率で混ぜ、単元が連続しないよう並べ替えて返す。" +
+      "assign_homework を呼ぶ前に、まずこれで候補を取ること。",
+    input_schema: {
+      type: "object",
+      properties: {
+        subject: { type: "string", description: "教科ID(math/science/english/japanese/social/info/skill)。省略で全教科" },
+        limit:   { type: "integer", description: "候補の数。省略時6" },
+      },
+    },
+  },
+  {
+    name: "assign_homework",
+    description:
+      "AI家庭教師として宿題を出す。get_homework で残り時間と難易度方針を確認し、" +
+      "suggest_homework_items で候補を得てから呼ぶこと。残り時間が5分未満なら出さない。" +
+      "問題文は沙和さんがそのまま解ける完全な形で書くこと(「教科書のp.42」のような参照は不可)。",
+    input_schema: {
+      type: "object",
+      properties: {
+        title:   { type: "string", description: "宿題の名前(例:一次関数と正負の数のミックス)" },
+        subject: { type: "string", description: "主な教科ID" },
+        minutes: { type: "integer", description: "想定所要時間(分)。1問あたり約2.5分で見積もる" },
+        due_in_days: { type: "integer", description: "何日後が期限か。0=今日、1=明日。省略で今日" },
+        reason:  { type: "string", description: "なぜこの内容にしたかを本人に伝える一言。必須" },
+        items: {
+          type: "array",
+          description: "問題のリスト。最大8問。単元が連続しないよう並べること",
+          items: {
+            type: "object",
+            properties: {
+              q:          { type: "string", description: "問題文。そのまま解ける完全な形で" },
+              hint:       { type: "string", description: "詰まったときの最初の一歩。答えは書かない" },
+              concept_id: { type: "string", description: "対応する概念ID" },
+            },
+            required: ["q", "concept_id"],
+          },
+        },
+      },
+      required: ["title", "reason", "items"],
+    },
+  },
+  {
+    name: "record_school_homework",
+    description:
+      "学校から出た宿題を写真やスキャンから読み取って登録する。取り込んだ画像の内容を読んで、" +
+      "問題を1問ずつ items に書き出すこと。読み取れない箇所があれば note に書き、本人に確認する。",
+    input_schema: {
+      type: "object",
+      properties: {
+        title:   { type: "string", description: "宿題の名前(例:数学ワーク p.42〜43)" },
+        subject: { type: "string", description: "教科ID" },
+        due_in_days: { type: "integer", description: "何日後が提出期限か。省略で今日" },
+        note:    { type: "string", description: "読み取れなかった箇所や注意点" },
+        items: {
+          type: "array",
+          description: "読み取った問題のリスト",
+          items: {
+            type: "object",
+            properties: {
+              q:          { type: "string", description: "問題文" },
+              concept_id: { type: "string", description: "対応する概念ID(推定でよい)" },
+            },
+            required: ["q"],
+          },
+        },
+      },
+      required: ["title", "items"],
+    },
+  },
+  {
+    name: "record_homework_result",
+    description:
+      "宿題の1問について結果を記録する。record_answer とあわせて必ず両方呼ぶこと。" +
+      "本人が「わからない」と言った問題は status に stuck を入れる。",
+    input_schema: {
+      type: "object",
+      properties: {
+        homework_id: { type: "string", description: "宿題のID。get_homework が返す" },
+        item_n:      { type: "integer", description: "何問目か(1始まり)" },
+        status:      { type: "string", enum: ["done", "stuck"], description: "done=解いた stuck=わからない" },
+        correct:     { type: "boolean", description: "正解だったか。stuck のときは省略可" },
+        confidence:  { type: "integer", enum: [1, 2, 3], description: "本人が申告した確信度" },
+      },
+      required: ["homework_id", "item_n", "status"],
+    },
+  },
 ];
 
 /* システムプロンプトの組み立て */
@@ -249,15 +345,29 @@ ${past.length ? `- 過去に持っていた夢:${past.join("、")}(変わった�
 - 主要教科の土台はほとんどの進路で共通です。だから今の勉強は、どの道に進んでも無駄になりません
 
 ${PEDAGOGY_RULES}
+${HOMEWORK_RULES}
 
 # 現在の学習状況
 ${statusSummary}
+
+# 宿題の状況
+${profile.homeworkStatus || "- まだ宿題の記録はありません。"}
 
 # ツールの使い方
 - 問題を出して答えが返ってきたら【必ず】 record_answer を呼ぶ(確信度を聞いてから)
 - つまずいたら【必ず】 diagnose_prerequisite を先に呼ぶ。教え直しはその後
 - 何を出題するか迷ったら get_study_queue を呼ぶ
 - 状況を知りたければ get_status を呼ぶ
+- 宿題を出す前は【必ず】 get_homework → suggest_homework_items → assign_homework の順
+- 学校の宿題の写真・スキャンを受け取ったら、内容を読んで record_school_homework で登録する
+- 宿題の1問が終わるたび record_homework_result と record_answer の両方を呼ぶ
+
+# 写真・スキャンを受け取ったとき
+1. まず読み取れた内容を短く確認する(「数学ワークのp.42、一次関数の問題が5問だね」)
+2. 読めない箇所があれば正直に言い、本人に聞く。推測で埋めない
+3. 学校の宿題なら record_school_homework で登録する
+4. **いきなり答えを教えない。** 1問目から順に、本人に考えさせながら進める
+5. すでに解いた答案の写真なら、丸つけをして、間違いは原因までさかのぼって説明する
 
 # 大切なこと
 - 1回の返事は短く。長くても10行程度。一度に詰め込まない
