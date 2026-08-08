@@ -659,3 +659,132 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 [data-theme="night"] .conf-btn, [data-theme="night"] .cex { background: var(--card); color: var(--ink2); }
 [data-theme="night"] .countdown-card { background: linear-gradient(135deg,#0f121b,#252b40); }
 [data-theme="night"] .dream-msg { background: #26223d; }
+
+/* ══════════════════════════════════════════════════════════════
+   パソコン・タブレット向けのレイアウト
+
+   考え方:
+   本文を画面の端から端まで伸ばすことは【しない】。
+   1行が長くなりすぎると読み返しの負担が増え、行を見失いやすくなる
+   (日本語で読みやすいのは1行あたりおよそ30〜40字)。
+   そこで、空いた横幅は「1行を長くする」のではなく
+   「カードを横に並べる」ことに使う。
+   ・タブは下の帯 → 左の縦メニューへ(パソコンではこちらが自然)
+   ・カード類は2〜3列に流し込み、1枚あたりの幅は読みやすさを保つ
+   ・チャットは幅を広げすぎず、代わりに縦を長く使う
+   ══════════════════════════════════════════════════════════════ */
+
+@media (min-width: 900px) {
+  body {
+    max-width: none;
+    display: grid;
+    grid-template-columns: 208px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100vh; height: calc(var(--vh, 1vh) * 100);
+  }
+  .topbar { grid-column: 1 / -1; padding: 12px 26px; }
+  .tb-right { gap: 22px; }
+
+  /* ── 左の縦メニュー ── */
+  .nav {
+    position: static; transform: none; width: auto; max-width: none;
+    grid-column: 1; grid-row: 2;
+    flex-direction: column; align-items: stretch; gap: 3px;
+    border-top: none; border-right: 1px solid var(--line);
+    background: var(--card); padding: 14px 10px; overflow-y: auto;
+  }
+  .nb {
+    flex: 0 0 auto; flex-direction: row; align-items: center; justify-content: flex-start;
+    gap: 11px; padding: 11px 13px; border-radius: 10px; font-size: 13.5px; font-weight: 600;
+  }
+  .nb span { font-size: 19px; width: 24px; text-align: center; }
+  .nb:hover { background: var(--bg); }
+  .nb.active { background: var(--accent-soft); color: var(--accent); }
+
+  /* ── 本文エリア ── */
+  #main {
+    grid-column: 2; grid-row: 2;
+    padding: 22px 26px 40px; overflow-y: auto;
+  }
+  .screen.active { max-width: 1480px; margin: 0 auto; }
+
+  /* カード類を段組みにする。1枚の幅は読みやすい範囲に収まる */
+  #s-home.screen.active, #s-weak.screen.active, #s-grade.screen.active,
+  #s-plan.screen.active, #s-parent.screen.active {
+    columns: 2; column-gap: 18px;
+  }
+  #s-home .card, #s-weak .card, #s-grade .card,
+  #s-plan .card, #s-parent .card {
+    break-inside: avoid; page-break-inside: avoid;
+    margin-bottom: 18px;
+  }
+  /* 横に長いほうが見やすいものだけ全幅にする */
+  .card.hero, #cardHomework,
+  #s-weak .card:has(#knowledgeMap),
+  #s-plan .card:has(#schoolList),
+  #s-home .card:has(#themeGrid) { column-span: all; }
+
+  /* 全幅にしたカードの中身は、横に並べて空きを埋める。
+     ただし本文の1行が長くなりすぎないよう、文章側は幅を制限する */
+  .card.hero {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 440px);
+    gap: 32px; align-items: center;
+  }
+  .hero-head { grid-column: 1; grid-row: 1 / span 3; max-width: 620px; }
+  .hero-line { font-size: 19px; }
+  .dream-track { grid-column: 2; grid-row: 1; margin-top: 0; }
+  .dream-note  { grid-column: 2; grid-row: 2; margin-top: 0; }
+  .dream-switch{ grid-column: 2; grid-row: 3; }
+
+  /* 全幅にしたカードの中身は、横に並べて空きを埋める */
+  #hwList { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+  .hw { margin-bottom: 0; }
+  .hw-actions { flex-direction: row; }
+  #hwBudget { max-width: 720px; }
+  #cardHomework > .cs, #s-plan .card:has(#schoolList) > .cs,
+  #s-weak .card:has(#knowledgeMap) > .cs { max-width: 780px; }
+  .theme-grid { grid-template-columns: repeat(6, 1fr); }
+
+  /* 段組みの中では1枚が細いので、内側の2列は縦に積む */
+  .quad, .say-grid, .cd-grid { grid-template-columns: 1fr; }
+  .persona-picker { grid-template-columns: repeat(3, 1fr); }
+
+  /* ── 学習(チャット)は縦を長く使う ── */
+  #s-study.screen.active {
+    max-width: 900px;
+    display: flex; flex-direction: column; height: 100%;
+  }
+  .chat { flex: 1; min-height: 0; max-height: none; }
+  .msg { max-width: 74%; }
+  .composer { padding: 9px 12px; }
+  #input { font-size: 15px !important; }
+
+  /* ── そのほか ── */
+  .toast { bottom: 26px; left: auto; right: 26px; transform: none; }
+  .btn { max-width: 420px; }
+  .hw-actions .btn, .card.hero .btn, .dream-switch { max-width: none; }
+  .form-row { max-width: 560px; }
+  .inp, .select { max-width: 100%; }
+  .intake { max-width: 420px; }
+  .hw-btns .btn { max-width: none; }
+  .dm-box { max-width: 520px; }
+}
+
+/* 大きい画面では3列。1枚あたりの幅は変えない */
+@media (min-width: 1440px) {
+  #s-home.screen.active, #s-weak.screen.active, #s-grade.screen.active,
+  #s-plan.screen.active, #s-parent.screen.active { columns: 3; }
+  #s-study.screen.active { max-width: 980px; }
+}
+
+@media (min-width: 1900px) {
+  #s-home.screen.active, #s-weak.screen.active, #s-grade.screen.active,
+  #s-plan.screen.active, #s-parent.screen.active { columns: 4; }
+}
+
+/* マウス操作の端末では、押せるものがわかるように */
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover, .pp:hover, .intake-btn:hover, .theme-swatch:hover,
+  .conf-btn:hover, .qa:hover, .seg-btn:hover { filter: brightness(.97); }
+  .card { transition: box-shadow .2s, background-color .3s; }
+}
