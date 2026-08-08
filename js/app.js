@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v18";
+const APP_VERSION = "v19";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -808,7 +808,7 @@ function toolLog(name) {
     add_english_word: "🆕 単語を登録中…",
     record_english_word: "📝 単語の結果を記録中…",
     note_english_conversation: "💬 英会話を記録中…",
-    luke_react: "🐶 Lukeが反応中…",
+    luke_react: "🐾 Lukeが反応中…",
     get_luke: "🐾 Lukeの様子を確認中…",
   };
   const el = document.createElement("div");
@@ -833,7 +833,7 @@ async function send(override) {
     && (!S.personaPinned || isDistress(text));
   if (maySwitch) {
     const p = PERSONAS[suggested];
-    toast(`${p.emoji} ${p.name}(${p.role})に切り替えました`);
+    toast(`${p.id === "aibou" ? "🐾" : p.emoji} ${p.name}(${p.role})に切り替えました`);
     S.persona = suggested; S.personaPinned = false; renderPersona();
   }
 
@@ -1072,7 +1072,7 @@ function renderHome() {
   // 人格
   $("#personaPicker").innerHTML = Object.values(PERSONAS).map((p) =>
     `<button class="pp ${S.persona === p.id ? "on" : ""}" data-persona="${p.id}">
-      <span class="pp-e">${p.emoji}</span><span class="pp-n">${p.name}</span>
+      <span class="pp-e">${p.id === "aibou" ? lukeFace(36) : p.emoji}</span><span class="pp-n">${p.name}</span>
       <span class="pp-r">${p.role}</span><span class="pp-need">${p.need}を支える</span></button>`).join("");
   $$("[data-persona]").forEach((b) => b.onclick = () => {
     S.persona = b.dataset.persona; S.personaPinned = true; save(); renderHome(); renderPersona(); go("study");
@@ -1091,7 +1091,8 @@ function renderHome() {
 
 function renderPersona() {
   $("#personaBar").innerHTML = Object.values(PERSONAS).map((p) =>
-    `<button class="${S.persona === p.id ? "on" : ""}" data-pb="${p.id}" style="${S.persona === p.id ? `color:${p.color}` : ""}">${p.emoji} ${p.name}</button>`).join("");
+    `<button class="${S.persona === p.id ? "on" : ""}" data-pb="${p.id}" style="${S.persona === p.id ? `color:${p.color}` : ""}">${
+      p.id === "aibou" ? `<span class="pb-luke">${lukeFace(20)}</span>` : p.emoji} ${p.name}</button>`).join("");
   $$("[data-pb]").forEach((b) => b.onclick = () => {
     S.persona = b.dataset.pb; S.personaPinned = true; save(); renderPersona(); renderHome();
     addMsg("ai", PERSONAS[S.persona].intro);
@@ -2004,7 +2005,7 @@ function init() {
   if (!S.chat.length) {
     $("#chat").innerHTML = `<div class="hint">話す相手を選んで、話しかけてみてください。<br>
       宿題や問題集は <b>📷</b> から写真で送れます。<br><br>
-      ミミ先生🐰 = 教える人 / Luke🐶 = 相棒 / ナギ🦉 = 伴走者</div>`;
+      ミミ先生🐰 = 教える人 / Luke🐾 = 相棒 / ナギ🦉 = 伴走者</div>`;
   }
 
   renderPersona(); renderKyotsu(); renderAll();
@@ -2508,6 +2509,18 @@ function lukeFigure(mood, size = 116) {
   return `<img class="luke-photo${e.r ? " round" : ""}${a.bob ? " lk-bob" : ""}" src="${e.u}"
     width="${size}" height="${size}" alt="Luke(${esc(mood.name)})"
     style="--tilt:${a.tilt}deg${a.faceX ? ";--flip:-1" : ""}">`;
+}
+
+/**
+ * 小さいアイコン用の Luke。
+ * 全身のままだと20〜40pxでは何も見えないので、SVGは顔のあたりだけを切り出す。
+ * 写真を登録してあれば、そちらを丸く出す。
+ */
+function lukeFace(size = 34) {
+  const e = lukeArtEntry("normal");
+  if (e?.u) return `<img class="luke-photo${e.r ? " round" : ""}" src="${e.u}"
+    width="${size}" height="${size}" alt="Luke">`;
+  return lukeSvg(LUKE_MOODS.normal, size, "26 32 148 124");
 }
 
 /* ── 切り抜き ─────────────────────────────────────────

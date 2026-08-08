@@ -513,7 +513,7 @@ const LUKE_EAR = "M76 48C55 52 38 64 33 86C28 108 33 126 48 132"
 const LUKE_BODY = "M100 143C120 143 135 155 137 172C139 187 130 195 116 195"
                 + "L84 195C70 195 61 187 63 172C65 155 80 143 100 143Z";
 
-function lukeSvg(mood, size = 132) {
+function lukeSvg(mood, size = 132, view = "0 0 200 200") {
   const a = mood.art;
   const eye = LUKE_EYES[a.eye] || LUKE_EYES.open;
   const line = a.eye === "arc" || a.eye === "closed" || a.eye === "sad";
@@ -530,7 +530,7 @@ function lukeSvg(mood, size = 132) {
   const rim = [[100,41,14],[81,46,12],[119,47,13],[67,58,10],[133,59,11]]
     .map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join("");
 
-  return `<svg class="luke-svg${a.bob ? " lk-bob" : ""}" viewBox="0 0 200 200" width="${size}" height="${size}"
+  return `<svg class="luke-svg${a.bob ? " lk-bob" : ""}" viewBox="${view}" width="${size}" height="${size}"
     role="img" aria-label="Luke(${mood.name})" style="--tail:${a.tail}s">
   <defs>
     <radialGradient id="lkF" gradientUnits="userSpaceOnUse" cx="76" cy="52" r="122">

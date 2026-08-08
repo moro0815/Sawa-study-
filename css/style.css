@@ -1164,3 +1164,9 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   background: var(--accent); border: 2px solid #fff; }
 .lk-crop-btns { display: flex; gap: 8px; max-width: 240px; margin: 12px auto 0; }
 .lk-crop-btns .btn { flex: 1; max-width: none; }
+
+/* 人格カード・人格バーの中の Luke */
+.pp-e:has(svg), .pp-e:has(img) { display: flex; justify-content: center; }
+.pp-e .luke-svg, .pp-e .luke-photo { display: block; }
+.pb-luke { display: inline-flex; vertical-align: -5px; }
+.pb-luke .luke-svg, .pb-luke .luke-photo { display: block; }
