@@ -156,6 +156,27 @@ Dunlosky らは10の代表的な学習法を検証し、**「練習テスト」�
 
 **実装:** 志望が変わったとき、アプリは変化そのものを肯定し、この統計を本人にも保護者にも示します。そして**積み上げた学習の何%が新しい進路に転用できるか**を計算して見せ、「無駄になった」という感覚を数字で否定します。
 
+### 16. 早すぎる受験プレッシャーは害になる
+
+英国の縦断・前向き研究では、**中等教育期の学業プレッシャーの高さが、抑うつ症状と自傷のリスクを高め、その影響が成人期初期まで持続しうる**ことが示されました。52研究を対象としたレビューでも、学業プレッシャーと不安・抑うつ・自殺念慮との正の関連が大半で確認されています。
+
+さらに重要なのは、プレッシャーが**自律性の感覚を損ない、内発的動機を「統制された動機」に置き換えてしまう**という点です。つまり、成績を上げるどころか下げる方向に働きます。
+
+> The Lancet Child & Adolescent Health (2025). *The association between academic pressure and adolescent depressive symptoms and self-harm: a longitudinal, prospective study in England.*
+> 系統的レビュー(52研究) / Frontiers in Psychology (2022). *The influence of academic pressure on adolescents' problem behavior.*
+
+**実装:** これは設計を大きく変えました。**中1・中2には大学受験のカウントダウンを一切表示しません。** 併願戦略・学費・模試偏差値・共通テストの情報も出しません。中3は高校受験のみ、高1は進路の話は始めるが残り日数は出さず、カウントダウンは高2から。保護者への共有リンクにも、中学生のうちは受験の残り日数を含めません。
+
+### 17. 未来自己連続性 — 締切の代わりになるもの
+
+いまの自分と未来の自分が心理的につながっていると感じられるほど、**長期的な行動を取りやすくなる**ことが知られています。思春期の研究では、つまずきを「自分を決定づけるもの」ではなく「**一時的で扱えるもの**」と解釈できるようになり、抑うつ症状も低いことが確認されています。
+
+> Hershfield, H. E. (2011). *Future self-continuity: how conceptions of the future self transform intertemporal choice.* Annals of the New York Academy of Sciences.
+> Rutchick, Slepian, Reyes, Pleskus & Hershfield (2018), Journal of Experimental Psychology: Applied.
+> 思春期を対象とした未来自己連続性と抑うつ症状の研究(Dovepress)
+
+**実装:** プレッシャーの代わりにこれを育てます。**未来の自分への手紙(タイムカプセル)** — 1年後・3年後などに届く手紙を書けます。**ここまでの道のり** — 一緒に過ごした日数と節目(7日・1ヶ月・100日・1年…6年)。締切で急かすのではなく、未来の自分とやりとりする形にしました。
+
 ---
 
 ## 採用しなかった研究(効果が疑わしいもの)

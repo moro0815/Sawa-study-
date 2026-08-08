@@ -20,13 +20,30 @@
 
 html, body { height: 100%; }
 body {
-  font-family: "Hiragino Kaku Gothic ProN", "BIZ UDPGothic", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  font-family: var(--font, "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif);
   background: var(--bg); color: var(--ink);
   display: flex; flex-direction: column;
   max-width: 720px; margin: 0 auto;
   font-size: 15px; line-height: 1.75;
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+  transition: background-color .3s, color .3s;
 }
+/* ── iOS対応 ── */
+.topbar { padding-top: calc(10px + env(safe-area-inset-top)); }
+#main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+/* iOSは16px未満のinputでフォーカス時に自動ズームするため、全入力を16px以上に */
+.inp, .select, #input, textarea, input { font-size: 16px !important; }
+.ng-sel { font-size: 16px !important; }
+input, textarea, select, button { -webkit-appearance: none; appearance: none; border-radius: 0; }
+.inp, .select, .ng-sel { border-radius: 9px; -webkit-appearance: none; }
+.select, .ng-sel { background-image: linear-gradient(45deg, transparent 50%, var(--ink3) 50%),
+  linear-gradient(135deg, var(--ink3) 50%, transparent 50%);
+  background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 28px; }
+.chat, .report-pre, #main { -webkit-overflow-scrolling: touch; }
+.msg, .report-pre, .letter-t { -webkit-user-select: text; user-select: text; }
 
 /* ── トップバー ── */
 .topbar {
@@ -50,7 +67,8 @@ body {
 .screen.active { display: block; animation: fade .2s ease; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
 
-.card { background: var(--card); border-radius: var(--r); box-shadow: var(--sh); padding: 16px; margin-bottom: 12px; }
+.card[hidden] { display: none !important; }
+.card { transition: background-color .3s; background: var(--card); border-radius: var(--r); box-shadow: var(--sh); padding: 16px; margin-bottom: 12px; }
 .card.accent-card { border-left: 3px solid var(--accent); }
 .ct { font-size: 14px; font-weight: 700; margin-bottom: 8px; letter-spacing: .02em; }
 .ct-note { font-size: 11px; font-weight: 400; color: var(--ink3); }
@@ -504,3 +522,80 @@ body {
 .say-why { display:block; font-size:10px; color:var(--ink3); font-weight:400; line-height:1.5; margin-top:1px; }
 .dream-note-parent { background:#fff8e8; border:1px solid #f2e2bd; border-radius:9px; padding:11px;
   font-size:12px; line-height:1.8; color:var(--ink2); margin-top:11px; }
+
+/* ══════════ 学年の段階 ══════════ */
+.stage-card { background: linear-gradient(135deg, var(--accent-soft), var(--card)); }
+.stg-head { display: flex; gap: 12px; align-items: center; }
+.stg-emoji { font-size: 30px; }
+.stg-label { font-size: 16px; font-weight: 700; }
+.stg-tag { font-size: 12px; color: var(--ink2); }
+.stg-focus { margin-top: 12px; }
+.stg-focus-t { font-size: 10.5px; font-weight: 700; color: var(--ink3); margin-bottom: 4px; letter-spacing: .04em; }
+.stg-f { font-size: 12.5px; color: var(--ink2); line-height: 1.85; }
+.stg-note { background: var(--card); border-radius: 9px; padding: 10px; font-size: 11px;
+  line-height: 1.8; color: var(--ink2); margin-top: 11px; }
+
+/* ══════════ ここまでの道のり ══════════ */
+.jr-main { display: flex; align-items: baseline; gap: 5px; }
+.jr-num { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.jr-unit { font-size: 14px; color: var(--ink2); }
+.jr-sub { font-size: 11.5px; color: var(--ink3); }
+.jr-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 12px; }
+.jr-s { background: var(--bg); border-radius: 10px; padding: 9px 6px; text-align: center; }
+.jr-s b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.jr-s span { font-size: 9.5px; color: var(--ink3); }
+.jr-next { font-size: 11.5px; color: var(--ink2); margin-top: 10px; }
+.jr-badges { font-size: 20px; margin-top: 7px; letter-spacing: 2px; }
+
+/* ══════════ 未来の自分への手紙 ══════════ */
+.letter { border-radius: 10px; padding: 11px; margin-bottom: 7px; font-size: 12.5px; }
+.letter.open { background: var(--accent-soft); }
+.letter.sealed { background: var(--bg); color: var(--ink3); font-size: 11.5px; }
+.letter-h { font-size: 11px; color: var(--ink3); margin-bottom: 4px; }
+.letter-t { line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
+.lw-prompts { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0; }
+.lw-p { border: 1px solid var(--line); background: var(--bg); border-radius: 99px; padding: 5px 11px;
+  font-size: 11px; cursor: pointer; font-family: inherit; color: var(--ink2); border-radius: 99px !important; }
+.lw-text { line-height: 1.9; resize: vertical; }
+
+/* ══════════ テーマ選択 ══════════ */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(102px,1fr)); gap: 8px; }
+.th { background: var(--bg); border: 1.5px solid var(--line); border-radius: 12px !important;
+  padding: 10px 7px; cursor: pointer; font-family: inherit; text-align: center; color: var(--ink); }
+.th.on { border-color: var(--accent); }
+.th-sw { display: block; width: 100%; height: 26px; border-radius: 7px; border: 1px solid;
+  margin-bottom: 6px; position: relative; }
+.th-sw i { position: absolute; right: 5px; bottom: 5px; width: 12px; height: 12px; border-radius: 50%; }
+.th-n { display: block; font-size: 12px; font-weight: 700; }
+.th-d { display: block; font-size: 9.5px; color: var(--ink3); line-height: 1.4; margin-top: 2px; }
+.th-f { display: block; font-size: 9px; color: var(--accent); margin-top: 3px; }
+
+/* ══════════ ダークテーマの微調整 ══════════ */
+[data-theme="night"] .say.bad { background: #3a2626; }
+[data-theme="night"] .say.good, [data-theme="night"] .al.good, [data-theme="night"] .adv-good { background: #1e3329; }
+[data-theme="night"] .al.warn, [data-theme="night"] .adv-warn,
+[data-theme="night"] .interleave-banner, [data-theme="night"] .conf-panel,
+[data-theme="night"] .dream-note-parent { background: #332c1c; border-color: #4a3f28; }
+[data-theme="night"] .al.alert, [data-theme="night"] .adv-alert,
+[data-theme="night"] .qc.top, [data-theme="night"] .msg.err,
+[data-theme="night"] .diag-node.root { background: #3a2326; border-color: #55343a; }
+[data-theme="night"] .dm-box, [data-theme="night"] .dream-modal .dm-box { background: var(--card); }
+[data-theme="night"] .dm-affirm { background: #262a3d; }
+[data-theme="night"] .dm-carry, [data-theme="night"] .letter.open { background: #1e3329; }
+[data-theme="night"] .ms.crit, [data-theme="night"] .conv-box.warn { background: #332c1c; }
+[data-theme="night"] .adv-say, [data-theme="night"] .al-say { background: rgba(255,255,255,.08); }
+[data-theme="night"] .kc.m0 { background: #2c3244; color: var(--ink3); }
+[data-theme="night"] .kc.m1 { background: #423619; color: #e8c37a; }
+[data-theme="night"] .kc.m2 { background: #1c3b30; color: #6fd9ae; }
+[data-theme="night"] .kc.m3 { background: #43262a; color: #f0a0a0; }
+[data-theme="night"] .nav, [data-theme="night"] .composer,
+[data-theme="night"] .timerbar { background: var(--card); }
+[data-theme="night"] .topbar { background: #0f121b; }
+[data-theme="night"] .btn-danger { background: var(--card); border-color: #4a3038; }
+[data-theme="night"] .btn-ghost, [data-theme="night"] .inp,
+[data-theme="night"] .select, [data-theme="night"] .ng-sel,
+[data-theme="night"] .persona-bar button, [data-theme="night"] .qa,
+[data-theme="night"] .seg-btn, [data-theme="night"] .mf,
+[data-theme="night"] .conf-btn, [data-theme="night"] .cex { background: var(--card); color: var(--ink2); }
+[data-theme="night"] .countdown-card { background: linear-gradient(135deg,#0f121b,#252b40); }
+[data-theme="night"] .dream-msg { background: #26223d; }

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f7f8fb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="robots" content="noindex,nofollow">
+<title>学習レポート</title>
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-text-size-adjust:100%}
+:root{--bg:#f7f8fb;--card:#fff;--ink:#1c2333;--ink2:#5a6478;--ink3:#949cae;
+ --line:#e6e9f0;--accent:#3d5afe;--accent-soft:#eef1ff;--green:#17a673;--amber:#e0921f;--red:#dc4b4b}
+body{font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+ background:var(--bg);color:var(--ink);font-size:15px;line-height:1.8;
+ max-width:640px;margin:0 auto;padding:0 14px calc(30px + env(safe-area-inset-bottom));
+ -webkit-font-smoothing:antialiased}
+header{padding:calc(16px + env(safe-area-inset-top)) 0 14px;text-align:center}
+h1{font-size:17px;font-weight:700}
+.meta{font-size:11.5px;color:var(--ink3);margin-top:3px}
+.card{background:var(--card);border-radius:14px;padding:15px;margin-bottom:11px;
+ box-shadow:0 1px 3px rgba(28,35,51,.06),0 6px 20px rgba(28,35,51,.05)}
+h2{font-size:13.5px;font-weight:700;margin-bottom:9px}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+ padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.row:last-child{border:none}
+.row b{font-variant-numeric:tabular-nums;flex-shrink:0}
+.note{background:var(--accent-soft);border-radius:9px;padding:11px;font-size:11.5px;
+ line-height:1.85;color:var(--ink2);margin-top:9px}
+.note b{color:var(--ink)}
+.al{border-radius:9px;padding:11px;margin-bottom:7px;border-left:3px solid var(--line);background:var(--bg)}
+.al.good{border-color:var(--green);background:#f0f9f5}
+.al.warn{border-color:var(--amber);background:#fff8e8}
+.al.alert{border-color:var(--red);background:#fdf3f3}
+.al-t{font-size:12.5px;font-weight:600}
+.al-b{font-size:11px;color:var(--ink2);line-height:1.75;margin-top:3px}
+.al-s{margin-top:6px;background:rgba(255,255,255,.85);border-radius:7px;padding:7px 9px;
+ font-size:12px;font-weight:600}
+.bar{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:3px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.sub{font-size:11px;color:var(--ink3)}
+.err{text-align:center;padding:50px 20px;color:var(--ink3);font-size:13.5px;line-height:2}
+.foot{text-align:center;font-size:10.5px;color:var(--ink3);padding:16px 0;line-height:1.9}
+.say{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+.say>div{border-radius:9px;padding:10px}
+.say .bad{background:#fdf3f3}.say .good2{background:#f0f9f5}
+.say h3{font-size:11.5px;margin-bottom:5px}
+.say .bad h3{color:var(--red)}.say .good2 h3{color:var(--green)}
+.say ul{margin-left:14px;font-size:10.5px;color:var(--ink2);line-height:1.7}
+@media(max-width:380px){.say{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">学習レポート</h1>
+  <p class="meta" id="meta"></p>
+</header>
+<div id="out"></div>
+<p class="foot">
+  このページは端末の中だけで表示されています。<br>
+  データはリンクそのものに含まれており、どこのサーバーにも保存されません。<br>
+  ― 沙和ナビ
+</p>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function decode(str) {
+  const b64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64 + "=".repeat((4 - b64.length % 4) % 4));
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function render(d) {
+  $("#title").textContent = `${d.n || ""}さんの学習レポート`;
+  $("#meta").textContent = `${d.g} ・ 直近${d.pd}日間 ・ ${d.dt} 時点`;
+
+  let h = "";
+
+  /* 今週まず知っておくこと */
+  if (d.ad) {
+    h += `<div class="card"><h2>▶ まず知っておくこと</h2>
+      <div class="al ${esc(d.ad.t)}"><div class="al-b" style="font-size:12.5px">${esc(d.ad.x)}</div>
+      ${d.ad.s ? `<div class="al-s">${esc(d.ad.s)}</div>` : ""}</div></div>`;
+  }
+
+  /* 気づいたこと */
+  if (d.al?.length) {
+    h += `<div class="card"><h2>▶ 気づいたこと</h2>` + d.al.map((a) =>
+      `<div class="al ${esc(a.l)}"><div class="al-t">${esc(a.i)} ${esc(a.t)}</div>
+       <div class="al-b">${esc(a.b)}</div>${a.s ? `<div class="al-s">${esc(a.s)}</div>` : ""}</div>`).join("") + `</div>`;
+  }
+
+  /* 学習の記録 */
+  h += `<div class="card"><h2>▶ 学習の記録</h2>
+    <div class="row"><span>学習した日数</span><b>${d.p.ad} 日 / ${d.pd}日</b></div>
+    <div class="row"><span>解いた問題数</span><b>${d.p.an} 問</b></div>
+    ${d.p.mi ? `<div class="row"><span>学習時間</span><b>${Math.round(d.p.mi / 60)} 時間</b></div>` : ""}
+    <div class="row"><span>新しく習得した概念</span><b>${d.p.nw} 個</b></div>
+    <div class="row"><span>練習中の正答率</span><b>${d.p.ac != null ? d.p.ac + "%" : "—"}</b></div>
+    <div class="note"><b>この数字の読み方</b><br>
+      練習中の正答率は<b>低くて構いません</b>。単元をわざと混ぜて出題する設計(交互練習)のため、
+      研究では練習中の正答率が 89%→60% に下がる一方、本番のテスト成績は約2倍になることが確認されています。
+      正答率ではなく<b>「学習した日数」と「新しく習得した概念」</b>を見てあげてください。</div></div>`;
+
+  /* 教科別 */
+  if (d.sm?.length) {
+    h += `<div class="card"><h2>▶ 教科別の習得度</h2>` + d.sm.map((s) =>
+      `<div style="margin-bottom:8px"><div class="row" style="border:none;padding:2px 0">
+        <span>${esc(s.n)}</span><span class="sub">${s.l}/${s.t}概念 ・ ${s.m}%</span></div>
+        <div class="bar"><i style="width:${s.m}%"></i></div></div>`).join("") + `</div>`;
+  }
+
+  /* 理解の質 */
+  if (d.w) {
+    h += `<div class="card"><h2>▶ 理解の質</h2>
+      <div class="row"><span>わかったつもり率</span><b>${d.w.o}%</b></div>
+      <div class="row"><span>最優先の弱点(自信あり×不正解)</span><b>${d.w.hw} 件</b></div>
+      <div class="row"><span>定着している概念</span><b>${d.w.hr} 件</b></div>
+      <div class="note">「わかったつもり」は、研究上<b>最も直りやすく最も伸びる場所</b>です(ハイパーコレクション効果)。
+        見つかったこと自体が前進なので、叱る材料にはしないでください。</div></div>`;
+  }
+
+  /* 成績 */
+  if (d.gr?.length) {
+    h += `<div class="card"><h2>▶ 定期テスト</h2>` + d.gr.map((g) =>
+      `<div class="row"><span>${esc(g.s)} ${esc(g.n)}<br><span class="sub">平均${g.a}点 ・ 推定偏差値 ${g.h}</span></span>
+        <b>${g.p}点</b></div>`).join("") + `</div>`;
+  }
+
+  /* 志望と受験 */
+  if (d.c) {
+    h += `<div class="card"><h2>▶ 志望</h2>
+      <div class="row"><span>今の志望</span><b>${esc(d.c.e)} ${esc(d.c.n)}</b></div>
+      <div class="row"><span>これまでの変更回数</span><b>${d.c.ch} 回</b></div>
+      ${d.ex ? `<div class="row"><span>共通テストまで</span><b>${d.ex}</b></div>` : ""}
+      ${d.hs ? `<div class="row"><span>模試</span><b>${esc(d.hs)}</b></div>` : ""}
+      <div class="note">${esc(d.c.r)}</div>
+      <div class="say">
+        <div class="bad"><h3>✕ 志望が変わったとき避けたい</h3><ul>
+          <li>「あんなに言ってたのに」</li><li>「今までの勉強、無駄になるよ」</li>
+          <li>「本当にそれでいいの?」</li><li>「まだ決まってないの?」</li></ul></div>
+        <div class="good2"><h3>○ 効果がある</h3><ul>
+          <li>「そう思ったきっかけ、聞かせて」</li><li>「そう思えるようになったんだね」</li>
+          <li>「今までの勉強はほとんど使えるよ」</li><li>「決まってなくても大丈夫」</li></ul></div>
+      </div></div>`;
+  }
+
+  /* 一緒に過ごした日数 */
+  if (d.j) {
+    h += `<div class="card"><h2>▶ 続けている日数</h2>
+      <div class="row"><span>はじめてから</span><b>${d.j} 日</b></div>
+      <div class="note">結果よりも、<b>続いていること</b>を言葉にして認めてあげてください。
+        それが次の1週間を支えます。</div></div>`;
+  }
+
+  $("#out").innerHTML = h;
+}
+
+try {
+  const frag = location.hash.slice(1);
+  const m = frag.match(/(?:^|&)d=([^&]+)/);
+  if (!m) throw new Error("no data");
+  render(decode(decodeURIComponent(m[1])));
+} catch (e) {
+  $("#out").innerHTML = `<div class="err">レポートを読み込めませんでした。<br><br>
+    リンクが途中で切れている可能性があります。<br>
+    お子さんの端末から、もう一度送ってもらってください。</div>`;
+}
+</script>
+</body>
+</html>

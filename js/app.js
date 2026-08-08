@@ -25,6 +25,10 @@ const defaults = () => ({
   career: DEFAULT_CAREER,      // 今の志望(変数。固定しない)
   dreamHistory: [],            // [{career, at, note}] 過去の夢も消さずに残す
   careerInterests: [],         // 気になっている進路
+  theme: null,                 // null なら学年に応じて自動
+  startedAt: null,             // 使い始めた日
+  seenMilestones: [],
+  letters: [],                 // [{text, writtenAt, openAt, opened}]
   costSchool: "hokudai",
   parentPeriod: 7,
   pendingConf: null,
@@ -52,6 +56,34 @@ function save() {
 }
 function mem(id) { return (S.mem[id] ||= newMemState(id)); }
 const today = () => new Date().toISOString().slice(0, 10);
+
+/** 今の学年の段階設定 */
+function stage() { return stageOf(S.grade); }
+
+/** テーマ(未設定なら学年に応じた既定) */
+function themeId() { return S.theme || stage().theme; }
+
+/** 段階に応じて、見せる/隠すを切り替える */
+function applyStage() {
+  const st = stage();
+  const show = (id, on) => { const el = $(id); if (el) el.hidden = !on; };
+  show("#cardCountdown", st.showExamCountdown);
+  show("#cardStrategy",  st.showStrategy);
+  show("#cardCost",      st.showCost);
+  show("#cardCalendar",  st.showExamCountdown);
+  show("#cardKyotsu",    st.showAdmissionTypes);
+  show("#cardAdmission", st.showAdmissionTypes);
+  show("#cardTime",      st.showExamCountdown);
+  show("#cardHensa",     st.showHensa);
+  show("#cardSchools",   st.showHensa);
+  show("#cardHyotei",    st.showAdmissionTypes);
+  // トップバーの「要注意」は中学生のうちは出さない(プレッシャーになる)
+  const alertStat = $("#statAlert")?.parentElement;
+  if (alertStat) alertStat.style.display = st.showExamCountdown ? "" : "none";
+  const t = THEMES[themeId()];
+  const logo = $("#tbLogo"); if (logo && t) logo.textContent = t.emoji;
+  const sub = $("#tbSub"); if (sub) sub.textContent = `${S.name}さん・${S.grade}・${st.label}`;
+}
 
 /** 今の志望 */
 function curCareer() { return CAREER_MAP[S.career] || CAREER_MAP[DEFAULT_CAREER]; }
@@ -378,7 +410,11 @@ function clearPhoto() { pendingImage = null; $("#preview").hidden = true; $("#ph
 
 /* ═══════════════ 描画 ═══════════════ */
 
-function renderAll() { renderTop(); renderHome(); renderWeak(); renderGrade(); renderPlan(); renderParent(); }
+function renderAll() {
+  applyStage();
+  renderTop(); renderHome(); renderJourney(); renderLetters(); renderThemes();
+  renderWeak(); renderGrade(); renderPlan(); renderParent();
+}
 
 function renderTop() {
   const sm = subjectMastery(S.mem);
@@ -397,9 +433,12 @@ function renderHome() {
   $("#heroGreet").textContent = h < 10 ? "おはようございます" : h < 18 ? "こんにちは" : "こんばんは";
   const w = weaknessSummary(S.mem);
   const q = buildQueue(S.mem, { limit: 8 });
+  const stg = stage();
   $("#heroLine").textContent = w.counts["hi-wrong"]
-    ? `最優先の弱点が ${w.counts["hi-wrong"]} 件あります。ここが一番伸びます。`
-    : q.length ? `今日の候補を ${q.length} 件そろえました。` : "まずは軽く診断から始めましょう。";
+    ? (stg.showExamCountdown
+        ? `最優先の弱点が ${w.counts["hi-wrong"]} 件あります。ここが一番伸びます。`
+        : `「わかったつもり」が ${w.counts["hi-wrong"]} 個見つかっています。ここが一番おいしいところ。`)
+    : q.length ? `今日の分を ${q.length} 個そろえました。` : "まずは軽く始めてみましょう。";
 
   // 夢との距離
   const gi = Math.max(0, GRADES.indexOf(S.grade));
@@ -413,7 +452,7 @@ function renderHome() {
   const cc = curCareer();
   $("#dreamGoal").textContent = `${cc.emoji} ${cc.name}`;
   const rm = ROADMAP[gi];
-  $("#dreamNote").textContent = rm ? `${S.grade}のテーマ:${rm.theme}` : "";
+  $("#dreamNote").textContent = `${S.grade}:${stage().tagline}`;
 
   // 今日やること
   const tl = $("#todayList");
@@ -675,6 +714,185 @@ function renderGrade() {
   }).join("");
 }
 
+/* ── 今の段階(受験タブの先頭) ── */
+function renderStage() {
+  const st = stage();
+  const t = THEMES[themeId()];
+  $("#stageCard").innerHTML = `
+    <div class="stg-head"><span class="stg-emoji">${t.emoji}</span>
+      <div><div class="stg-label">${esc(st.label)}</div>
+      <div class="stg-tag">${esc(st.tagline)}</div></div></div>
+    <div class="stg-focus"><div class="stg-focus-t">${esc(st.horizon)}の focus</div>
+      ${st.focus.map((f) => `<div class="stg-f">・${esc(f)}</div>`).join("")}</div>
+    ${st.note ? `<div class="stg-note">${esc(st.note)}</div>` : ""}`;
+}
+
+/* ── ここまでの道のり(長く付き合うための記録) ── */
+function renderJourney() {
+  const j = journey(S.startedAt, S.seenMilestones);
+  if (!j) { $("#journeyCard").hidden = true; return; }
+  $("#journeyCard").hidden = false;
+  const y = yearOverYear(S.mem, S.grades);
+  $("#journeyBox").innerHTML = `
+    <div class="jr-main"><span class="jr-num">${j.days.toLocaleString()}</span><span class="jr-unit">日目</span></div>
+    <p class="jr-sub">${S.name}さんと一緒に過ごした日数です。</p>
+    <div class="jr-stats">
+      <div class="jr-s"><b>${y.conceptsNow}</b><span>学んだ概念</span></div>
+      <div class="jr-s"><b>${y.mastered}</b><span>できるようになった</span></div>
+      <div class="jr-s"><b>${(S.sessions || []).length}</b><span>机に向かった日</span></div>
+    </div>
+    ${j.next ? `<p class="jr-next">次の節目 ${j.next.emoji} ${esc(j.next.title)} まで あと ${j.daysToNext} 日</p>` : ""}
+    ${j.reached.length ? `<div class="jr-badges">${j.reached.map((m) => `<span title="${esc(m.title)}">${m.emoji}</span>`).join("")}</div>` : ""}`;
+
+  // 未表示の節目があれば祝う
+  if (j.unseen.length) {
+    const m = j.unseen.at(-1);
+    S.seenMilestones.push(...j.unseen.map((x) => x.days)); save();
+    setTimeout(() => showMilestone(m, y), 700);
+  }
+}
+
+function showMilestone(m, y) {
+  const el = document.createElement("div");
+  el.className = "dream-modal";
+  el.innerHTML = `<div class="dm-box">
+    <div class="dm-h">${m.emoji}</div>
+    <div class="dm-t">${esc(m.title)}</div>
+    <p class="dm-affirm">${esc(m.msg)}</p>
+    <div class="dm-carry">この間に <b>${y.conceptsNow}個</b> の概念を学び、<b>${y.mastered}個</b> をできるようにしました。</div>
+    <button class="btn btn-primary" id="dmClose">ありがとう</button></div>`;
+  document.body.appendChild(el);
+  el.querySelector("#dmClose").onclick = () => el.remove();
+}
+
+/* ── 未来の自分への手紙 ── */
+function renderLetters() {
+  const now = Date.now();
+  const arrived = S.letters.filter((l) => now >= l.openAt);
+  const waiting = S.letters.filter((l) => now < l.openAt);
+  let h = "";
+  if (arrived.length) {
+    h += arrived.slice().reverse().map((l) => {
+      const w = new Date(l.writtenAt).toISOString().slice(0, 10);
+      return `<div class="letter open"><div class="letter-h">📬 ${w} の自分から</div>
+        <div class="letter-t">${esc(l.text)}</div></div>`;
+    }).join("");
+  }
+  if (waiting.length) {
+    h += waiting.map((l) => {
+      const o = new Date(l.openAt).toISOString().slice(0, 10);
+      const d = Math.ceil((l.openAt - now) / 86400000);
+      return `<div class="letter sealed">✉️ ${o} に届きます(あと ${d} 日)</div>`;
+    }).join("");
+  }
+  if (!h) h = `<p class="empty">まだ手紙はありません。<br>1年後の自分に、いま伝えたいことを書いてみてください。</p>`;
+  $("#letterBox").innerHTML = h;
+}
+
+function openLetterWriter() {
+  const prompts = letterPrompts(S.grade);
+  const el = document.createElement("div");
+  el.className = "dream-modal";
+  el.innerHTML = `<div class="dm-box">
+    <div class="dm-t">未来の自分への手紙</div>
+    <p class="cs">1年後のこの日に届きます。あとから読み返すと、自分がどれだけ変わったかがわかります。</p>
+    <div class="lw-prompts">${prompts.map((p) => `<button class="lw-p">${esc(p)}</button>`).join("")}</div>
+    <textarea id="lwText" class="inp lw-text" rows="6" placeholder="思ったことを、そのまま書いて大丈夫です"></textarea>
+    <div class="form-row" style="margin-top:8px">
+      <select id="lwWhen" class="select">
+        <option value="365">1年後に届く</option>
+        <option value="180">半年後に届く</option>
+        <option value="90">3ヶ月後に届く</option>
+        <option value="1095">3年後に届く</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" id="lwSave">封をする</button>
+    <button class="btn btn-ghost" id="lwCancel">やめる</button></div>`;
+  document.body.appendChild(el);
+  el.querySelectorAll(".lw-p").forEach((b) => b.onclick = () => {
+    const ta = el.querySelector("#lwText");
+    ta.value += (ta.value ? "\n\n" : "") + b.textContent + "\n";
+    ta.focus();
+  });
+  el.querySelector("#lwCancel").onclick = () => el.remove();
+  el.querySelector("#lwSave").onclick = () => {
+    const text = el.querySelector("#lwText").value.trim();
+    if (!text) return toast("何か書いてから封をしてください");
+    const days = Number(el.querySelector("#lwWhen").value);
+    S.letters.push({ text, writtenAt: Date.now(), openAt: Date.now() + days * 86400000 });
+    save(); renderLetters(); el.remove();
+    toast(`封をしました。${days}日後に届きます`);
+  };
+}
+
+/* ── テーマ ── */
+function renderThemes() {
+  $("#themeGrid").innerHTML = Object.entries(THEMES).map(([id, t]) =>
+    `<button class="th ${themeId() === id ? "on" : ""}" data-th="${id}">
+      <span class="th-sw" style="background:${t.v["--bg"]};border-color:${t.v["--line"]}">
+        <i style="background:${t.v["--accent"]}"></i></span>
+      <span class="th-n">${t.emoji} ${esc(t.name)}</span>
+      <span class="th-d">${esc(t.desc)}</span>
+      <span class="th-f">${esc(t.forStage)}</span></button>`).join("");
+  $$("[data-th]").forEach((b) => b.onclick = () => {
+    S.theme = b.dataset.th; save(); applyTheme(S.theme); renderThemes(); applyStage();
+    toast(`${THEMES[S.theme].emoji} ${THEMES[S.theme].name} にしました`);
+  });
+}
+
+/* ── 保護者のiPhoneへ共有 ── */
+function buildShareData() {
+  const days = S.parentPeriod || 7;
+  const p = periodSummary(S, days);
+  const w = weaknessSummary(S.mem);
+  const sm = subjectMastery(S.mem);
+  const adv = guardianAdvice(S);
+  const ds = dreamStatus(S);
+  const cd = countdownToExam(S.grade);
+  const st = stage();
+  const j = journey(S.startedAt, []);
+  return {
+    n: S.name, g: S.grade, pd: days, dt: today(),
+    ad: { t: adv.tone === "neutral" ? "" : adv.tone, x: adv.text, s: adv.say },
+    al: detectAlerts(S).filter((a) => a.title !== adv.featured).slice(0, 5)
+        .map((a) => ({ l: a.level, i: a.icon, t: a.title, b: a.body, s: a.say })),
+    p: { ad: p.activeDays, an: p.answered, mi: p.minutes, nw: p.newly,
+         ac: p.accuracy != null ? Math.round(p.accuracy * 100) : null },
+    sm: Object.entries(sm).filter(([, v]) => v.learned).map(([k, v]) =>
+        ({ n: SUBJECTS[k].emoji + SUBJECTS[k].name, l: v.learned, t: v.total, m: Math.round(v.avgMastery * 100) })),
+    w: w.totalAnswers ? { o: Math.round(w.overconfidence * 100), hw: w.counts["hi-wrong"], hr: w.counts["hi-right"] } : null,
+    gr: S.grades.slice(-5).map((g) => ({ s: SUBJECTS[g.subject]?.name || "", n: g.name, p: g.score, a: g.avg, h: g.eval.estHensa })),
+    c: ds ? { e: ds.current.emoji, n: ds.current.name, ch: ds.changes, r: ds.read } : null,
+    // ★中学生のうちは大学受験の残り日数を保護者にも出さない
+    ex: st.showExamCountdown && cd ? `${cd.days.toLocaleString()}日(${cd.examYearLabel})` : null,
+    hs: st.showHensa && S.hensa ? `${MOSHI_TYPES[S.moshiType]?.name} ${S.hensa}(河合換算 約${kawaiHensa()})` : null,
+    j: j ? j.days : null,
+  };
+}
+
+function buildShareUrl() {
+  const json = JSON.stringify(buildShareData());
+  const bytes = new TextEncoder().encode(json);
+  let bin = ""; for (const b of bytes) bin += String.fromCharCode(b);
+  const b64 = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const base = location.href.replace(/[^/]*$/, "") + "share.html";
+  return { url: `${base}#d=${b64}`, size: b64.length };
+}
+
+async function shareToPhone() {
+  const { url, size } = buildShareUrl();
+  $("#shareInfo").textContent = `リンクの長さ:${size.toLocaleString()}文字`;
+  if (size > 30000) $("#shareInfo").textContent += " ⚠ 長すぎる可能性があります。期間を7日に縮めてお試しください。";
+  const text = `${S.name}さんの学習レポートです`;
+  try {
+    if (navigator.share) { await navigator.share({ title: "学習レポート", text, url }); return; }
+    await navigator.clipboard.writeText(url);
+    toast("リンクをコピーしました。LINEなどに貼って送ってください");
+  } catch (e) {
+    if (e?.name !== "AbortError") toast("共有できませんでした。「リンクをコピー」をお試しください");
+  }
+}
+
 function renderCareer() {
   const c = curCareer();
   $("#currentCareer").innerHTML = `
@@ -773,6 +991,7 @@ function showDreamChange(msg) {
 
 function renderPlan() {
   const gi = Math.max(0, GRADES.indexOf(S.grade));
+  renderStage();
   renderCareer();
 
   /* カウントダウン */
@@ -994,6 +1213,10 @@ function go(screen) {
 
 /* ═══════════════ 初期化 ═══════════════ */
 function init() {
+  // 使い始めた日を記録(長く付き合うための起点)
+  if (!S.startedAt) { S.startedAt = Date.now(); save(); }
+  applyTheme(themeId());
+
   // 設定
   $("#apiKey").value = S.apiKey;
   $("#pName").value = S.name;
@@ -1064,6 +1287,15 @@ function init() {
     S.dailyMinutes = v; save(); renderTimeProjection();
   };
   $("#timerBtn").onclick = toggleTimer;
+  $("#writeLetter").onclick = openLetterWriter;
+  $("#shareToPhone").onclick = shareToPhone;
+  $("#copyLink").onclick = async () => {
+    const { url, size } = buildShareUrl();
+    try { await navigator.clipboard.writeText(url); toast("リンクをコピーしました"); }
+    catch (_) { toast("コピーできませんでした"); }
+    $("#shareInfo").textContent = `リンクの長さ:${size.toLocaleString()}文字`;
+  };
+  $("#openLink").onclick = () => window.open(buildShareUrl().url, "_blank");
   $("#dreamSwitch").onclick = () => { go("plan"); setTimeout(() => $("#currentCareer").scrollIntoView({ behavior:"smooth", block:"center" }), 100); };
   $("#openExplorer").onclick = () => {
     const box = $("#careerExplorer");
@@ -1090,7 +1322,10 @@ function init() {
   $("#saveSettings").onclick = () => {
     S.apiKey = $("#apiKey").value.trim();
     S.name = $("#pName").value.trim() || "沙和";
+    const prevGrade = S.grade;
     S.grade = $("#pGrade").value;
+    // 学年が変わったら、その学年のテーマを提案(押しつけない)
+    if (prevGrade !== S.grade && !S.theme) applyTheme(themeId());
     save(); renderAll();
     $("#settingsMsg").textContent = "保存しました";
     setTimeout(() => ($("#settingsMsg").textContent = ""), 2500);
@@ -1131,6 +1366,14 @@ function init() {
   }
 
   renderPersona(); renderKyotsu(); renderAll();
+
+  // オフラインでも開けるように
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  // iOSの100vh問題対策
+  const vh = () => document.documentElement.style.setProperty("--vh", window.innerHeight * 0.01 + "px");
+  vh(); window.addEventListener("resize", vh); window.addEventListener("orientationchange", vh);
 
   if (!S.apiKey) {
     go("parent");

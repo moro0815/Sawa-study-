@@ -3,16 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#1c2333">
+<meta name="theme-color" content="#fdfaf3">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="沙和ナビ">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <title>沙和ナビ</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
+<link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
 <header class="topbar">
   <div class="tb-left">
-    <span class="tb-logo">🩺</span>
+    <span class="tb-logo" id="tbLogo">🌱</span>
     <div>
       <h1 class="tb-title">沙和ナビ</h1>
       <p class="tb-sub" id="tbSub">6年の伴走</p>
@@ -58,6 +64,19 @@
     <button class="btn btn-primary" id="startStudy">この内容で学習をはじめる</button>
   </div>
 
+  <div class="card" id="journeyCard">
+    <h2 class="ct">▶ ここまでの道のり</h2>
+    <div id="journeyBox"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 未来の自分へ <span class="ct-note">タイムカプセル</span></h2>
+    <p class="cs">1年後の自分に手紙を書いておけます。時間が経つと届きます。<br>
+      <b>いまの自分と未来の自分がつながっている感覚</b>が、長い時間の学習を支えることが研究でわかっています(未来自己連続性)。</p>
+    <div id="letterBox"></div>
+    <button class="btn btn-ghost" id="writeLetter">手紙を書く</button>
+  </div>
+
   <div class="card">
     <h2 class="ct">▶ 話す相手を選ぶ</h2>
     <p class="cs">同じAIですが、役割が違います。今の気分で選んでください。</p>
@@ -67,6 +86,11 @@
   <div class="card">
     <h2 class="ct">▶ 教科別の習得度</h2>
     <div id="subjectBars"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 見た目を変える <span class="ct-note">好きなものを選んでください</span></h2>
+    <div class="theme-grid" id="themeGrid"></div>
   </div>
 </section>
 
@@ -158,7 +182,7 @@
     <div class="naishin-total">合計 <b id="naishinTotal">—</b> / 45</div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardHyotei">
     <h2 class="ct">▶ 高校の評定平均値(推薦の出願資格)</h2>
     <p class="cs">高1の1学期から高3の1学期までの<b>全科目の5段階平均</b>。学校推薦型選抜では多くの獣医学部が <b>3.8〜4.3以上</b> を条件にします。高1の最初から全部が対象です。</p>
     <div class="form-row">
@@ -169,7 +193,7 @@
     <div id="hyoteiResult"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardHensa">
     <h2 class="ct">▶ 模試の偏差値 <span class="ct-note">※模試の種類で10以上変わります</span></h2>
     <p class="cs cs-warn"><b>ここは最も誤解が多いところです。</b>同じ実力でも、受ける模試によって偏差値は10〜15変わります。母集団が違うためです。大学の偏差値表は<b>河合塾(全統模試)基準</b>なので、そこに換算しないと志望校との距離を見誤ります。</p>
     <div class="form-row">
@@ -188,7 +212,7 @@
     <div id="marginalList"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardSchools">
     <h2 class="ct">▶ 獣医学部 全17校との距離</h2>
     <p class="cs cs-warn">偏差値は2026年度の一般的な公表値をもとにした<b>目安</b>です。出願判断は必ず河合塾・駿台等の最新資料で確認してください。</p>
     <div id="schoolList"></div>
@@ -197,6 +221,7 @@
 
 <!-- ══════════ 受験 ══════════ -->
 <section id="s-plan" class="screen">
+  <div class="card stage-card" id="stageCard"></div>
   <div class="card">
     <h2 class="ct">▶ 今の志望 <span class="ct-note">いつでも変えられます</span></h2>
     <div id="currentCareer"></div>
@@ -228,7 +253,7 @@
     <div id="versatilityList"></div>
   </div>
 
-  <div class="card countdown-card">
+  <div class="card countdown-card" id="cardCountdown">
     <h2 class="ct">▶ 大学受験まで</h2>
     <div class="cd-main"><span class="cd-num" id="cdDays">—</span><span class="cd-unit">日</span></div>
     <p class="cd-sub" id="cdSub"></p>
@@ -236,12 +261,12 @@
   </div>
 
   <div class="card">
-    <h2 class="ct">▶ いつまでに何が終わっていればいいか(逆算)</h2>
+    <h2 class="ct" id="msTitle">▶ いつまでに何が終わっていればいいか</h2>
     <p class="cs">受験日から逆算したマイルストーンです。★は特に外せない分岐点。</p>
     <div id="milestones"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardTime">
     <h2 class="ct">▶ 学習時間の見通し</h2>
     <div class="form-row">
       <input id="dailyMin" class="inp" type="number" placeholder="1日の学習時間(分)" min="0" max="900">
@@ -256,19 +281,19 @@
     <div id="roadmap"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardAdmission">
     <h2 class="ct">▶ 入試方式は3つあります</h2>
     <p class="cs">一般選抜だけが受験ではありません。推薦・総合型は<b>中学・高校での積み重ねがそのまま出願資格</b>になります。</p>
     <div id="admissionTypes"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardStrategy">
     <h2 class="ct">▶ 併願戦略</h2>
     <p class="cs">獣医学部は全国17校しかなく、募集人数も少ないため、組み合わせが合否を大きく左右します。</p>
     <div id="strategyBox"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardKyotsu">
     <h2 class="ct">▶ 共通テスト(2025年度〜 新課程)</h2>
     <p class="cs">国公立の獣医学部は原則 <b>6教科8科目</b>。2025年度入試から「情報I」が加わり、全国立大学が利用します。</p>
     <div class="form-row">
@@ -278,12 +303,12 @@
     <div id="kyotsuTable"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardCalendar">
     <h2 class="ct">▶ 受験イヤーの年間スケジュール</h2>
     <div id="examCalendar"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardCost">
     <h2 class="ct">▶ 費用の見通し <span class="ct-note">※すべて目安</span></h2>
     <p class="cs cs-warn">獣医学部は<b>6年制</b>です。国公立と私立で総額が3〜4倍違います。早い段階で知っておくと進路の選び方が変わります。金額は必ず各大学の公式サイトでご確認ください。</p>
     <div class="form-row"><select id="costSchool" class="select"></select></div>
@@ -325,9 +350,22 @@
     <div id="parentExamStatus"></div>
   </div>
 
+  <div class="card accent-card">
+    <h2 class="ct">▶ 保護者のiPhoneに送る</h2>
+    <p class="cs">この端末のデータから<b>読み取り専用のレポートページ</b>を作り、リンクとして送れます。
+      LINEやメールで送って、iPhoneのSafariで開いてください。<br>
+      <b>データはリンクの中だけにあります。</b>どこのサーバーにも保存されません。</p>
+    <button class="btn btn-primary" id="shareToPhone">リンクを作って送る</button>
+    <div class="form-row" style="margin-top:8px">
+      <button class="btn btn-sm" id="copyLink">リンクをコピー</button>
+      <button class="btn btn-sm" id="openLink">開いて確認</button>
+    </div>
+    <p class="cs" id="shareInfo" style="margin-top:8px"></p>
+  </div>
+
   <div class="card">
-    <h2 class="ct">▶ レポートを書き出す</h2>
-    <p class="cs">三者面談や、離れて暮らすご家族との共有にそのまま使える形式です。</p>
+    <h2 class="ct">▶ レポートを書き出す(テキスト)</h2>
+    <p class="cs">三者面談や、印刷して渡したいときに。</p>
     <div class="form-row">
       <button class="btn btn-sm" id="copyReport">コピーする</button>
       <button class="btn btn-sm" id="dlReport">テキストで保存</button>
@@ -381,6 +419,7 @@
       <label class="lbl">名前<input type="text" id="pName" class="inp" placeholder="沙和"></label>
       <label class="lbl">学年<select id="pGrade" class="select"></select></label>
     </div>
+    <p class="cs">学年を変えると、表示する内容も切り替わります。<b>中学生のうちは大学受験のカウントダウンを出しません</b>(学業プレッシャーが抑うつ・自傷のリスクを高めるという縦断研究にもとづく判断です)。</p>
     <button class="btn btn-primary" id="saveSettings">保存</button>
     <p id="settingsMsg" class="ok-msg"></p>
   </div>
@@ -407,6 +446,7 @@
 
 <div class="toast" id="toast" hidden></div>
 
+<script src="js/stage.js"></script>
 <script src="js/evidence.js"></script>
 <script src="js/curriculum.js"></script>
 <script src="js/memory.js"></script>
