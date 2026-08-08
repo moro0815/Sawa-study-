@@ -502,8 +502,29 @@ async function send(override) {
     save(); renderAll();
   } catch (e) {
     thinking.parentElement?.remove();
+    S.apiMessages.pop(); S.chat.pop();
+
+    // 履歴の tool_use / tool_result の対応が崩れていたら、その場で直す。
+    // 直さないと以後ずっと同じエラーが出続けてしまう。
+    const broken = e instanceof ApiError && e.status === 400 && /tool_result|tool_use|tool_call/i.test(e.message);
+    if (broken || historyLooksBroken(S.apiMessages)) {
+      S.apiMessages = repairPairs(S.apiMessages);
+    }
+
     addMsg("err", "⚠ " + (e instanceof ApiError ? e.friendly() : "通信エラーです。接続を確認してください。"));
-    S.apiMessages.pop(); S.chat.pop(); save();
+    if (broken) {
+      // 送った内容(写真を含む)は消えていないので、押し直せばそのまま送れる
+      const el = $("#chat").lastElementChild;
+      const btn = document.createElement("button");
+      btn.className = "btn btn-sm err-fix";
+      btn.textContent = "会話をすべて整理してやり直す";
+      btn.onclick = () => {
+        S.apiMessages = []; save(); el.remove();
+        toast("会話を整理しました。もう一度送ってください");
+      };
+      el.appendChild(btn);
+    }
+    save();
   } finally {
     busy = false; $("#send").disabled = false;
   }

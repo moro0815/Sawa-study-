@@ -74,25 +74,82 @@ function coerceArgs(input, schema) {
   return out;
 }
 
-/** 履歴を直近に絞る。画像は最新1枚のみ残してトークンを節約 */
+/**
+ * 履歴を送れる形に整える。
+ *
+ * ★ここは一度壊れると以後ずっと通信が失敗する場所なので、慎重に。
+ * ツールを使った会話は
+ *     assistant: [tool_use  id=X]
+ *     user     : [tool_result tool_use_id=X]
+ * が必ず対になっている必要がある。
+ * 単純に「直近N件」で切ると、この対の途中で切れて
+ * 先頭が tool_result だけの user メッセージになり、
+ * 400 (Each `tool_result` block must have a corresponding `tool_use` block)
+ * を返し続けてしまう。
+ */
 function trimHistory(messages) {
-  const recent = messages.slice(-HISTORY_LIMIT);
-  while (recent.length && recent[0].role !== "user") recent.shift();
-  let imageKept = false;
+  const recent = repairPairs(messages.slice(-HISTORY_LIMIT));
+
+  // 画像・PDFは最新の1通ぶんだけ残してトークンを節約
+  let mediaKept = false;
   const out = [];
   for (let i = recent.length - 1; i >= 0; i--) {
     const m = recent[i];
     if (Array.isArray(m.content) && m.content.some((b) => b.type === "image" || b.type === "document")) {
-      if (imageKept) {
+      if (mediaKept) {
         const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
         out.unshift({ role: m.role, content: "【写真・スキャンを送りました】" + (text ? "\n" + text : "") });
         continue;
       }
-      imageKept = true;
+      mediaKept = true;
     }
     out.unshift(m);
   }
   return out;
+}
+
+/** tool_use と tool_result の対応が取れた形に直す */
+function repairPairs(list) {
+  let out = list.slice();
+
+  // 1. 先頭を整える。
+  //    対になる assistant が残っていない tool_result や、
+  //    user 以外で始まるものは落とす。
+  while (out.length) {
+    const m = out[0];
+    const hasResult = Array.isArray(m.content) && m.content.some((b) => b.type === "tool_result");
+    if (m.role !== "user" || hasResult) { out.shift(); continue; }
+    break;
+  }
+
+  // 2. 末尾を整える。結果が返っていない tool_use を残すと弾かれる。
+  while (out.length) {
+    const m = out.at(-1);
+    if (m.role === "assistant" && Array.isArray(m.content) && m.content.some((b) => b.type === "tool_use")) {
+      out.pop(); continue;
+    }
+    break;
+  }
+
+  // 3. 念のため、対応の取れないブロックを個別に取り除く
+  const useIds = new Set();
+  for (const m of out) {
+    if (!Array.isArray(m.content)) continue;
+    for (const b of m.content) if (b.type === "tool_use") useIds.add(b.id);
+  }
+  const cleaned = [];
+  for (const m of out) {
+    if (!Array.isArray(m.content)) { cleaned.push(m); continue; }
+    const content = m.content.filter((b) => b.type !== "tool_result" || useIds.has(b.tool_use_id));
+    if (!content.length) continue;                 // 中身が空になったメッセージは送らない
+    cleaned.push({ ...m, content });
+  }
+  return cleaned;
+}
+
+/** 履歴の対応関係が壊れているかどうか(エラー復旧の判定用) */
+function historyLooksBroken(messages) {
+  return JSON.stringify(repairPairs(messages)) !== JSON.stringify(messages);
 }
 
 /** 画像を長辺1568pxのJPEGに縮小してbase64化 */

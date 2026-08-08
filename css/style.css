@@ -168,6 +168,7 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .msg img { max-width: 100%; border-radius: 8px; display: block; margin-bottom: 6px; }
 .msg.think { color: var(--ink3); font-style: italic; font-size: 13px; }
 .msg.err { background: #fdeaea; color: var(--red); font-size: 12.5px; align-self: stretch; max-width: 100%; }
+.err-fix { display: block; margin-top: 9px; background: var(--red); color: #fff; width: 100%; }
 .tool-log { align-self: flex-start; font-size: 10.5px; color: var(--ink3); background: var(--accent-soft); padding: 3px 9px; border-radius: 99px; }
 
 .conf-panel { background: #fff8e8; border: 1px solid #f2e2bd; border-radius: 11px; padding: 11px; margin-bottom: 10px; }

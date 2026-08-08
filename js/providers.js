@@ -95,7 +95,15 @@ class ApiError extends Error {
              "別のプロバイダ、またはブラウザ利用に対応した提供元(OpenRouterなど)をお試しください。";
     if (this.kind === "network")
       return "通信できませんでした。電波とURLの綴りを確認してください。";
-    if (this.status === 400) return "リクエストが受け付けられませんでした。モデル名の綴りを確認してください。" + (this.message ? "\n" + this.message : "");
+    if (this.status === 400) {
+      // 履歴の tool_use / tool_result の対応が崩れている場合。
+      // 利用者にはモデル名の話をしても意味がないので分けて出す。
+      if (/tool_result|tool_use|tool_call/i.test(this.message))
+        return "会話のつながりが途中で切れてしまいました。ここまでの会話をいったん整理してから、もう一度送ってみてください。";
+      if (/model/i.test(this.message))
+        return "モデル名が正しくないようです。設定画面で綴りを確認するか、「使えるモデルの一覧を取得」から選び直してください。" + (this.message ? "\n" + this.message : "");
+      return "リクエストが受け付けられませんでした。" + (this.message ? "\n" + this.message : "");
+    }
     if (this.status === 401) return "APIキーが正しくないようです。設定画面で確認してください。";
     if (this.status === 403) return "このAPIキーには権限がないようです。設定画面で確認してください。";
     if (this.status === 404) return "そのモデルが見つかりませんでした。モデル名を確認してください。";
