@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v21";
+const APP_VERSION = "v22";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -878,7 +878,7 @@ async function send(override) {
         learningBlock: learningPromptBlock(S),
         englishBlock: englishPromptBlock(S),
         englishStatus: englishStatusText(S),
-        lukeBlock: lukePromptBlock(S),
+        lukeBlock: lukePromptBlock(S, S.persona),
         lukeStatus: lukeStatusText(S),
       }, statusSummary()),
       messages: S.apiMessages,
