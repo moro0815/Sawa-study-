@@ -98,6 +98,7 @@ function usageYen(providerId, modelId, usage, usdJpy = 155) {
 class ApiError extends Error {
   constructor(status, message, kind) { super(message); this.status = status; this.kind = kind; }
   friendly() {
+    if (this.kind === "abort") return "送信をやめました。";
     if (this.kind === "cors")
       return "このサービスはブラウザから直接呼び出せない設定のようです(CORS)。" +
              "別のプロバイダ、またはブラウザ利用に対応した提供元(OpenRouterなど)をお試しください。";
@@ -128,6 +129,8 @@ async function safeFetch(url, init) {
   try {
     return await fetch(url, init);
   } catch (e) {
+    // 本人が「やめる」を押した場合。通信の失敗とは区別する
+    if (e && (e.name === "AbortError" || init?.signal?.aborted)) throw new ApiError(0, "中断しました", "abort");
     const cors = /cors|failed to fetch|networkerror|load failed/i.test(String(e && e.message));
     throw new ApiError(0, String(e && e.message || e), cors ? "cors" : "network");
   }
@@ -169,7 +172,7 @@ async function errorFrom(res) {
    Anthropic
    ========================================================================= */
 
-async function sendAnthropic({ apiKey, model, system, messages, tools, onDelta }) {
+async function sendAnthropic({ apiKey, model, system, messages, tools, onDelta, signal }) {
   const body = {
     model,
     max_tokens: MAX_TOKENS,
@@ -188,6 +191,7 @@ async function sendAnthropic({ apiKey, model, system, messages, tools, onDelta }
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
     },
+    signal,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await errorFrom(res);
@@ -309,7 +313,7 @@ function toGeminiContents(messages) {
   return contents;
 }
 
-async function sendGemini({ apiKey, model, system, messages, tools, onDelta }) {
+async function sendGemini({ apiKey, model, system, messages, tools, onDelta, signal }) {
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: toGeminiContents(messages),
@@ -323,6 +327,7 @@ async function sendGemini({ apiKey, model, system, messages, tools, onDelta }) {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) throw await errorFrom(res);
 
@@ -422,7 +427,7 @@ function openaiPart(b) {
   return null;
 }
 
-async function sendOpenAI({ apiKey, model, baseUrl, system, messages, tools, onDelta }) {
+async function sendOpenAI({ apiKey, model, baseUrl, system, messages, tools, onDelta, signal }) {
   const body = {
     model,
     max_tokens: MAX_TOKENS,
@@ -448,6 +453,7 @@ async function sendOpenAI({ apiKey, model, baseUrl, system, messages, tools, onD
       "x-title": "Sawa Navi",
     },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) throw await errorFrom(res);
 

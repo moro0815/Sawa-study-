@@ -21,12 +21,15 @@ async function chatWithTools(o) {
   const stat = { rounds: 0, tools: [], usage: { in: 0, out: 0 }, startedAt: Date.now() };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    // 「やめる」が押されていたら、次の往復には入らない
+    if (o.signal?.aborted) throw new ApiError(0, "中断しました", "abort");
     stat.rounds++;
     o.onRound?.(round);
     const res = await sendToProvider({
       provider: o.provider, model: o.model, apiKey: o.apiKey, baseUrl: o.baseUrl,
       system: o.system, messages, tools: o.tools,
       onDelta: (t) => { finalText += t; o.onDelta?.(t); },
+      signal: o.signal,
     });
     stat.usage.in += res.usage?.in || 0;
     stat.usage.out += res.usage?.out || 0;

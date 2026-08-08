@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v19";
+const APP_VERSION = "v20";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -65,6 +65,7 @@ const defaults = () => ({
 let S = load();
 let pendingFiles = [];   // 送信待ちの写真・スキャン(複数可)
 let busy = false;
+let inflight = null;   // 送信中のリクエスト。「やめる」で中断する
 let mapFilter = "math";
 
 function load() {
@@ -823,7 +824,9 @@ async function send(override) {
   if (!text && !pendingFiles.length) return;
   if (!curKey()) { addMsg("err", "APIキーが未設定です。「保護者」タブで設定してください。"); go("parent"); return; }
 
-  busy = true; $("#send").disabled = true;
+  busy = true;
+  inflight = new AbortController();
+  setSendMode(true);
 
   // 人格の自動提案(押しつけない)
   // ★自分で選んだ相手からは、勝手に離れない。
@@ -837,6 +840,7 @@ async function send(override) {
     S.persona = suggested; S.personaPinned = false; renderPersona();
   }
 
+  const files = pendingFiles.slice();     // やめたときに戻せるよう控える
   let content, imgUrl = null;
   if (pendingFiles.length) {
     content = pendingFiles.map((f) => f.kind === "pdf"
@@ -886,6 +890,7 @@ async function send(override) {
       onToolUse: (n) => { if (!span) { thinking.parentElement.remove(); span = null; } toolLog(n); },
       onRound: (i) => { if (i > 0 && !span) toolLog("__round" + i); },
       runTool,
+      signal: inflight.signal,
     });
 
     if (!span && res.text) { thinking.parentElement?.remove(); span = addMsg("ai", res.text); }
@@ -914,6 +919,16 @@ async function send(override) {
     thinking.parentElement?.remove();
     S.apiMessages.pop(); S.chat.pop();
 
+    // ★「やめる」で止めた場合。失敗ではないので、書いた内容を入力欄に戻すだけ
+    if (e instanceof ApiError && e.kind === "abort") {
+      $("#chat").lastElementChild?.remove();          // 自分の発言も画面から消す
+      if (typeof sendText === "string") inp.value = text;
+      if (files.length) { pendingFiles = files; renderPreview(); }
+      save(); renderAll();
+      toast("送信をやめました");
+      return;
+    }
+
     // 履歴の tool_use / tool_result の対応が崩れていたら、その場で直す。
     // 直さないと以後ずっと同じエラーが出続けてしまう。
     logApi({ ok: false, provider: S.provider, model: curModel(),
@@ -938,8 +953,82 @@ async function send(override) {
     }
     save();
   } finally {
-    busy = false; $("#send").disabled = false;
+    busy = false; inflight = null;
+    setSendMode(false);
+    renderUndo();
   }
+}
+
+/* ── 送信ボタン:送信中は「やめる」に変わる ───────────────── */
+
+function setSendMode(sending) {
+  const b = $("#send");
+  if (!b) return;
+  b.classList.toggle("stop", sending);
+  b.textContent = sending ? "■" : "↑";
+  b.title = sending ? "送信をやめる" : "送る";
+  b.setAttribute("aria-label", sending ? "送信をやめる" : "送る");
+}
+
+/** 送信中に押されたら中断する */
+function stopSending() {
+  if (!busy || !inflight) return;
+  inflight.abort();
+  toast("やめています…");
+}
+
+/* ── 直前のやりとりを取り消す ───────────────────────────────
+   写真を送りまちがえた、聞き方をまちがえた、というときに使う。
+   ★消えるのは【会話だけ】。記録した宿題や答えの記録は消さない。
+     ここで一緒に消すと、正しく記録されたものまで巻き添えになるため。 */
+
+/** API履歴の中で、直前のやりとりが始まる位置 */
+function lastTurnStart(msgs) {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    const isResult = Array.isArray(m.content) && m.content.some((b) => b.type === "tool_result");
+    if (m.role === "user" && !isResult) return i;
+  }
+  return -1;
+}
+
+function canUndo() {
+  return !busy && S.chat.some((m) => m.who === "user");
+}
+
+function undoLastTurn() {
+  if (!canUndo()) return;
+  const i = lastTurnStart(S.apiMessages);
+  if (i >= 0) S.apiMessages = S.apiMessages.slice(0, i);
+  S.apiMessages = repairPairs(S.apiMessages);
+
+  // 表示側も、最後の自分の発言から後ろを消す
+  let j = -1;
+  for (let k = S.chat.length - 1; k >= 0; k--) if (S.chat[k].who === "user") { j = k; break; }
+  if (j >= 0) S.chat = S.chat.slice(0, j);
+
+  save();
+  redrawChat();
+  toast("直前のやりとりを取り消しました");
+}
+
+/** 会話の表示を作り直す */
+function redrawChat() {
+  const box = $("#chat");
+  box.innerHTML = "";
+  for (const m of S.chat.slice(-40)) addMsg(m.who, m.text, { img: m.img, persona: m.persona });
+  if (!S.chat.length) {
+    box.innerHTML = `<div class="hint">話す相手を選んで、話しかけてみてください。<br>
+      宿題や問題集は <b>📷</b> から写真で送れます。<br><br>
+      ミミ先生🐰 = 教える人 / Luke🐾 = 相棒 / ナギ🦉 = 伴走者</div>`;
+  }
+  renderUndo();
+}
+
+function renderUndo() {
+  const b = $("#undoBtn");
+  if (!b) return;
+  b.hidden = !canUndo();
 }
 
 function clearPhoto() {
@@ -1843,7 +1932,10 @@ function init() {
   $("#startStudy").onclick = () => { S.persona = "sensei"; S.personaPinned = true; renderPersona(); go("study"); send("今日の分をやりたいです。まず何から?"); };
 
   // チャット
-  $("#send").onclick = () => send();
+  $("#send").onclick = () => (busy ? stopSending() : send());
+  $("#undoBtn").onclick = () => {
+    if (confirm("直前のやりとりを取り消します。\n\n会話から消えるだけで、記録した宿題や答えは残ります。")) undoLastTurn();
+  };
   $("#input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
@@ -2008,7 +2100,7 @@ function init() {
       ミミ先生🐰 = 教える人 / Luke🐾 = 相棒 / ナギ🦉 = 伴走者</div>`;
   }
 
-  renderPersona(); renderKyotsu(); renderAll();
+  renderPersona(); renderKyotsu(); renderAll(); renderUndo();
 
   // オフラインでも開けるように
   if ("serviceWorker" in navigator) {

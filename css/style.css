@@ -1170,3 +1170,10 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .pp-e .luke-svg, .pp-e .luke-photo { display: block; }
 .pb-luke { display: inline-flex; vertical-align: -5px; }
 .pb-luke .luke-svg, .pb-luke .luke-photo { display: block; }
+
+/* ── 送信をやめる / 直前のやりとりを取り消す ── */
+.send.stop { background: var(--red); }
+.undo-btn { flex-shrink: 0; align-self: flex-end; border: 1px solid var(--line); background: #fff;
+  border-radius: 999px; padding: 9px 12px; font: inherit; font-size: 11.5px; color: var(--ink2);
+  cursor: pointer; white-space: nowrap; }
+.undo-btn:active { background: var(--bg); }
