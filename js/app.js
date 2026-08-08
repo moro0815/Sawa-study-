@@ -15,10 +15,16 @@ const defaults = () => ({
   apiMessages: [],       // API用の生履歴
   grades: [],            // [{subject, name, score, avg, date, eval}]
   naishin: {},           // subjectId -> 1..5
-  hensa: null,
+  hensa: null,           // 模試の偏差値(生の値)
+  moshiType: "zento",    // どの模試か — 換算に必要
+  hensaLog: [],          // [{value, type, kawai, date}]
+  hyotei: {},            // 高校の評定平均 {ラベル: 値}
+  dailyMinutes: null,    // 1日の学習時間(分)
   goals: [],             // [{text, deadline, at}]
-  sessions: [],          // [{date, answered, correct}]
-  pendingConf: null,     // 確信度の申告待ち
+  sessions: [],          // [{date, answered, correct, minutes}]
+  costSchool: "hokudai",
+  parentPeriod: 7,
+  pendingConf: null,
   lastConf: null,
 });
 
@@ -43,6 +49,43 @@ function save() {
 }
 function mem(id) { return (S.mem[id] ||= newMemState(id)); }
 const today = () => new Date().toISOString().slice(0, 10);
+
+/** 志望校との比較は必ず河合塾(全統)基準に換算した値で行う */
+function kawaiHensa() {
+  if (S.hensa == null) return null;
+  const k = toKawaiScale(S.hensa, S.moshiType || "zento");
+  return k ? k.center : null;
+}
+
+/* ── 学習時間の計測 ── */
+let timer = { on: false, start: 0, elapsed: 0, tick: null };
+function todaySession() {
+  const d = today();
+  let s = S.sessions.find((x) => x.date === d);
+  if (!s) { s = { date: d, answered: 0, correct: 0, minutes: 0 }; S.sessions.push(s); }
+  if (s.minutes == null) s.minutes = 0;
+  return s;
+}
+function fmtTime(ms) {
+  const t = Math.floor(ms / 1000);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+function toggleTimer() {
+  if (timer.on) {
+    const add = Date.now() - timer.start;
+    timer.elapsed += add;
+    todaySession().minutes += Math.round(add / 60000);
+    timer.on = false; clearInterval(timer.tick); save(); renderParent();
+    $("#timerBtn").textContent = "▶ 計測開始";
+    toast(`${Math.round(add / 60000)}分を記録しました`);
+  } else {
+    timer.on = true; timer.start = Date.now();
+    $("#timerBtn").textContent = "⏸ 停止";
+    timer.tick = setInterval(() => {
+      $("#timerText").textContent = "学習時間 " + fmtTime(timer.elapsed + (Date.now() - timer.start));
+    }, 1000);
+  }
+}
 
 function toast(msg, ms = 2400) {
   const t = $("#toast"); t.textContent = msg; t.hidden = false;
@@ -119,7 +162,8 @@ async function runTool(name, input) {
     case "get_status": {
       const sm = subjectMastery(S.mem);
       const w = weaknessSummary(S.mem);
-      const dist = S.hensa ? VET_SCHOOLS.map((s) => ({ name: s.name, hensa: s.hensa, ...distanceToSchool(s, S.hensa) })) : null;
+      const kh = kawaiHensa();
+      const dist = kh ? VET_SCHOOLS.map((s) => ({ name: s.name, hensa: s.hensa, ...distanceToSchool(s, kh) })) : null;
       return {
         name: S.name, grade: S.grade,
         subject_mastery: Object.fromEntries(Object.entries(sm).map(([k, v]) =>
@@ -131,7 +175,9 @@ async function runTool(name, input) {
         },
         recent_tests: S.grades.slice(-5).map((g) => ({ 教科: SUBJECTS[g.subject]?.name, テスト: g.name, 点数: g.score, 平均: g.avg, 評価: g.eval.band })),
         naishin: calcNaishin(S.naishin),
-        偏差値: S.hensa,
+        模試: S.hensa ? `${MOSHI_TYPES[S.moshiType]?.name} 偏差値${S.hensa}(河合塾換算 約${kh})` : "未入力",
+        高校の評定平均: calcHyoteiHeikin(S.hyotei),
+        受験まで: countdownToExam(S.grade),
         志望校距離: dist ? dist.slice(0, 5) : "偏差値が未入力です",
         goals: S.goals.slice(-5),
       };
@@ -500,8 +546,48 @@ function renderGrade() {
   const n = calcNaishin(S.naishin);
   $("#naishinTotal").textContent = n.filled ? n.total : "—";
 
-  $("#hensaNow").textContent = S.hensa ? `現在の登録:偏差値 ${S.hensa}` : "偏差値を入れると、志望校との距離が計算されます。";
-  if ($("#hensaIn") && S.hensa && !$("#hensaIn").value) $("#hensaIn").value = S.hensa;
+  // 評定平均
+  const hy = calcHyoteiHeikin(S.hyotei);
+  const entries = Object.entries(S.hyotei || {});
+  $("#hyoteiResult").innerHTML = entries.length
+    ? entries.map(([k, v]) => `<div class="wr-row"><span>${esc(k)}</span><b>${v}</b>
+        <button class="mini-x" data-rmhy="${esc(k)}">✕</button></div>`).join("") +
+      `<div class="hy-box ${hy.ok ? "ok" : ""}"><b>評定平均 ${hy.avg}</b><br>${esc(hy.eligible)}</div>`
+    : `<p class="cs">高校に入学したら、学期ごとの平均を入れていってください。中学生のうちは空欄で構いません。</p>`;
+  $$("[data-rmhy]").forEach((b) => b.onclick = () => { delete S.hyotei[b.dataset.rmhy]; save(); renderGrade(); });
+
+  // 模試の種類
+  const ms = $("#moshiType");
+  if (!ms.dataset.filled) {
+    ms.innerHTML = Object.values(MOSHI_TYPES).map((m) =>
+      `<option value="${m.id}" ${S.moshiType === m.id ? "selected" : ""}>${m.name}</option>`).join("");
+    ms.dataset.filled = "1";
+    ms.onchange = () => { S.moshiType = ms.value; save(); renderGrade(); };
+  }
+  ms.value = S.moshiType || "zento";
+
+  // 模試の換算結果
+  const mt = MOSHI_TYPES[S.moshiType || "zento"];
+  let html = `<p class="cs">${esc(mt.note)}</p>`;
+  if (S.hensa != null && mt.offset !== null) {
+    const k = toKawaiScale(S.hensa, S.moshiType);
+    html += `<div class="conv-box"><div class="conv-main">
+        <span class="conv-raw">${mt.name}<br><b>${S.hensa}</b></span>
+        <span class="conv-arrow">→</span>
+        <span class="conv-kawai">大学偏差値表の基準<br><b>約 ${k.center}</b>${k.band ? `<small>(${Math.round(k.low)}〜${Math.round(k.high)})</small>` : ""}</span>
+      </div>${S.moshiType !== "zento" ? `<p class="conv-note">この換算後の数字で志望校との距離を判定しています。</p>` : ""}</div>`;
+    html += `<div class="conv-table"><div class="conv-th">同じ実力を各模試で受けたら</div>` +
+      conversionTable(k.center).map((c) => `<div class="conv-tr ${c.isBase ? "base" : ""}">
+        <span>${esc(c.name)}</span><b>${c.value}</b></div>`).join("") + `</div>`;
+    if (S.hensaLog.length > 1) {
+      html += `<div class="conv-th" style="margin-top:12px">推移(河合塾換算)</div>` +
+        S.hensaLog.slice(-8).reverse().map((l) => `<div class="wr-row"><span>${l.date} ・ ${MOSHI_TYPES[l.type]?.name || ""}</span><b>${l.value} → ${l.kawai}</b></div>`).join("");
+    }
+  } else if (mt.offset === null) {
+    html += `<div class="conv-box warn">高校受験の模試は大学受験に換算できません。母集団がまったく違うためです。高校入学後、全統模試などで測り直してください。</div>`;
+  }
+  $("#hensaResult").innerHTML = html;
+  if ($("#hensaIn") && S.hensa != null && !$("#hensaIn").value) $("#hensaIn").value = S.hensa;
 
   // 限界効用
   const testScores = {};
@@ -515,7 +601,7 @@ function renderGrade() {
 
   // 志望校
   $("#schoolList").innerHTML = VET_SCHOOLS.map((s) => {
-    const d = distanceToSchool(s, S.hensa);
+    const d = distanceToSchool(s, kawaiHensa());
     return `<div class="school"><div class="sc-body">
       <div class="sc-name">${esc(s.name)} <span class="sc-type">${s.type}</span></div>
       <div class="sc-fac">${esc(s.faculty)} ・ ${s.pref}${s.kyotsu ? ` ・ 共テ${s.kyotsu}%` : ""}</div>
@@ -527,6 +613,69 @@ function renderGrade() {
 
 function renderPlan() {
   const gi = Math.max(0, GRADES.indexOf(S.grade));
+
+  /* カウントダウン */
+  const cd = countdownToExam(S.grade);
+  if (cd) {
+    $("#cdDays").textContent = cd.days.toLocaleString();
+    $("#cdSub").textContent = `共通テスト(${cd.examYearLabel})まで — 約${cd.years}年 / ${cd.months}ヶ月 / 週末は残り${cd.weekends}回`;
+    $("#cdGrid").innerHTML = [
+      ["高3の1年", `${Math.max(0, Math.round((cd.days - 365) / 365 * 10) / 10)}年後に開始`],
+      ["受験学年度", `${cd.gradYear}年度`],
+      ["入試方式", "一般 / 推薦 / 総合型"],
+      ["志望", "獣医学部(全国17校)"],
+    ].map(([k, v]) => `<div class="cd-cell"><div class="cd-k">${k}</div><div class="cd-v">${v}</div></div>`).join("");
+  }
+
+  /* 逆算マイルストーン */
+  $("#milestones").innerHTML = backwardMilestones(S.grade).map((m) =>
+    `<div class="ms ${m.critical ? "crit" : ""}">
+      <div class="ms-at">${esc(m.at)}</div>
+      <div class="ms-body"><div class="ms-label">${m.critical ? "★ " : ""}${esc(m.label)}</div>
+      <div class="ms-detail">${esc(m.detail)}</div></div></div>`).join("");
+
+  /* 学習時間の見通し */
+  if (S.dailyMinutes && $("#dailyMin")) $("#dailyMin").value = S.dailyMinutes;
+  renderTimeProjection();
+
+  /* 入試方式 */
+  $("#admissionTypes").innerHTML = ADMISSION_TYPES.map((a) =>
+    `<div class="adm"><div class="adm-h"><b>${esc(a.name)}</b><span class="adm-when">${esc(a.when)}</span></div>
+      <p class="adm-desc">${esc(a.desc)}</p>
+      <ul class="adm-need">${a.need.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
+      <div class="adm-tip">💡 ${esc(a.tip)}</div></div>`).join("");
+
+  /* 併願戦略 */
+  const kh = kawaiHensa();
+  const st = buildStrategy(kh);
+  if (!st) $("#strategyBox").innerHTML = `<p class="empty">模試の偏差値を「成績」タブで入力すると、併願プランが出ます。</p>`;
+  else {
+    const grp = (title, arr, color, note) => !arr.length ? "" :
+      `<div class="stg"><div class="stg-h" style="color:${color}">${title} <span class="stg-note">${note}</span></div>
+        ${arr.map((s) => `<div class="stg-item"><span>${esc(s.name)} <span class="sc-type">${s.type}</span></span>
+          <span class="stg-h2">${s.hensa} <small>(${s.gap > 0 ? "+" : ""}${Math.round(s.gap * 10) / 10})</small></span></div>`).join("")}</div>`;
+    $("#strategyBox").innerHTML =
+      `<p class="cs">河合塾換算 偏差値 <b>${kh}</b> を基準にしています。</p>` +
+      grp("挑戦圏", st.challenge, "var(--red)", "届けば大きい。1〜2校まで") +
+      grp("射程圏", st.target, "var(--amber)", "本命ゾーン") +
+      grp("安全圏", st.safe, "var(--green)", "必ず確保したい") +
+      `<div class="stg-advice">${esc(st.advice)}</div>`;
+  }
+
+  /* 年間スケジュール */
+  $("#examCalendar").innerHTML = EXAM_CALENDAR.map((c) =>
+    `<div class="cal"><div class="cal-m">${c.label}</div><ul>${c.items.map((i) =>
+      `<li class="${i.startsWith("★") ? "cal-key" : ""}">${esc(i)}</li>`).join("")}</ul></div>`).join("");
+
+  /* 費用 */
+  const cs = $("#costSchool");
+  if (!cs.dataset.filled) {
+    cs.innerHTML = VET_SCHOOLS.map((s) => `<option value="${s.id}" ${S.costSchool === s.id ? "selected" : ""}>${s.name}(${s.type})</option>`).join("");
+    cs.dataset.filled = "1";
+    cs.onchange = () => { S.costSchool = cs.value; save(); renderCost(); };
+  }
+  renderCost();
+
   $("#roadmap").innerHTML = ROADMAP.map((r, i) =>
     `<div class="rm ${i === gi ? "now open" : ""}" data-rm="${i}">
       <div class="rm-h"><span class="rm-g">${r.grade}</span><span class="rm-t">${esc(r.theme)}</span></div>
@@ -540,6 +689,37 @@ function renderPlan() {
     : `<p class="empty">まだありません。ナギ(伴走者)と話しながら決めてみてください。</p>`;
 }
 
+function renderTimeProjection() {
+  const min = S.dailyMinutes;
+  if (!min) { $("#timeProjection").innerHTML = `<p class="cs">1日の学習時間を入れると、受験までに積み上がる総量が出ます。</p>`; return; }
+  const p = studyTimeProjection(S.grade, min);
+  if (!p) return;
+  const over = p.diff >= 0;
+  $("#timeProjection").innerHTML = `
+    <div class="tp"><div class="tp-row"><span>1日 ${min}分 を受験まで続けると</span><b>約 ${p.totalHours.toLocaleString()} 時間</b></div>
+    <div class="tp-row"><span>${S.grade}の一般的な目安(1日)</span><b>${p.recommended}分</b></div>
+    <div class="tp-row ${over ? "up" : "down"}"><span>目安との差</span><b>${over ? "+" : ""}${p.diff}分/日</b></div></div>
+    <p class="cs">${over
+      ? "目安を上回っています。無理が続いていないかだけ気をつけてください。量より継続です。"
+      : `目安まであと ${-p.diff}分。ただし<b>時間より中身</b>です。混ぜた問題を確信度つきで解く30分は、ぼんやり読む90分より効きます。`}</p>`;
+}
+
+function renderCost() {
+  const c = estimateCost(S.costSchool);
+  if (!c) return;
+  const yen = (n) => "¥" + n.toLocaleString();
+  $("#costResult").innerHTML = `
+    <div class="cost-total">${esc(c.school.name)}(${c.school.type})<br>
+      <span class="cost-num">${yen(c.total)}</span><span class="cost-lab">6年間の総額(目安)</span></div>
+    <div class="cost-row"><span>学費(6年)</span><b>${yen(c.tuition)}</b></div>
+    <div class="cost-row"><span>受験費用(共テ+国公立1+私立2+交通宿泊)</span><b>${yen(c.exam)}</b></div>
+    <div class="cost-row"><span>学費を月額にならすと</span><b>${yen(c.monthly)} / 月</b></div>
+    <p class="cs" style="margin-top:10px">${c.school.type === "私立"
+      ? "私立は国公立のおよそ<b>3〜4倍</b>です。奨学金・教育ローン・大学独自の特待生制度を早めに調べておくと選択肢が広がります。"
+      : "国公立は学費が大きく抑えられます(入学金282,000円+授業料535,800円/年の標準額)。その分、共通テストで6教科8科目が必要です。"}</p>
+    <p class="cs cs-warn">※ 実習費・教材費・生活費は含みません。必ず各大学の公式サイトで最新の金額をご確認ください。</p>`;
+}
+
 function renderKyotsu() {
   const rate = Number($("#targetRate").value) || 78;
   const k = kyotsuTargets(rate);
@@ -550,30 +730,64 @@ function renderKyotsu() {
 }
 
 function renderParent() {
-  // 週次レポート
-  const wk = Date.now() - 7 * 86400000;
-  const sess = S.sessions.filter((s) => new Date(s.date).getTime() >= wk);
-  const answered = sess.reduce((a, s) => a + s.answered, 0);
-  const correct = sess.reduce((a, s) => a + s.correct, 0);
-  const days = sess.length;
-  const w = weaknessSummary(S.mem);
-  const newly = Object.values(S.mem).filter((m) => m.last && m.last >= wk && m.mastery >= 0.7).length;
+  /* 今週の一言 */
+  const adv = guardianAdvice(S);
+  $("#guardianAdvice").innerHTML = `<div class="adv adv-${adv.tone}">
+    <p class="adv-text">${esc(adv.text)}</p>
+    ${adv.say ? `<div class="adv-say"><span class="adv-say-l">かけるとよい言葉</span>${esc(adv.say)}</div>` : ""}</div>`;
 
+  /* アラート */
+  const alerts = detectAlerts(S).filter((a) => a.title !== adv.featured);
+  $("#alertList").innerHTML = alerts.length
+    ? alerts.map((a) => `<div class="al al-${a.level}">
+        <div class="al-h"><span class="al-i">${a.icon}</span><b>${esc(a.title)}</b></div>
+        <p class="al-b">${esc(a.body)}</p>
+        ${a.say ? `<div class="al-say">${esc(a.say)}</div>` : ""}</div>`).join("")
+    : `<p class="empty">${adv.featured ? "他に気になる点はありません。" : "学習が始まると、ここに良い変化と気になる点が表示されます。"}</p>`;
+
+  /* 期間サマリー */
+  const days = S.parentPeriod || 7;
+  $$("#periodSeg .seg-btn").forEach((b) => b.classList.toggle("on", Number(b.dataset.days) === days));
+  const p = periodSummary(S, days);
+  const w = weaknessSummary(S.mem);
   $("#weeklyReport").innerHTML = `
-    <div class="wr-row"><span>学習した日数</span><b>${days} 日 / 7日</b></div>
-    <div class="wr-row"><span>答えた問題数</span><b>${answered} 問</b></div>
-    <div class="wr-row"><span>練習中の正答率</span><b>${answered ? Math.round((correct / answered) * 100) : "—"}%</b></div>
-    <div class="wr-row"><span>新しく習得した概念</span><b>${newly} 個</b></div>
+    <div class="wr-row"><span>学習した日数</span><b>${p.activeDays} 日 / ${days}日</b></div>
+    <div class="wr-row"><span>解いた問題数</span><b>${p.answered} 問</b></div>
+    ${p.minutes ? `<div class="wr-row"><span>学習時間</span><b>${Math.round(p.minutes / 60)} 時間(1日平均 ${p.avgMinutes} 分)</b></div>` : ""}
+    <div class="wr-row"><span>新しく習得した概念</span><b>${p.newly} 個</b></div>
+    <div class="wr-row"><span>練習中の正答率</span><b>${p.accuracy != null ? Math.round(p.accuracy * 100) + "%" : "—"}</b></div>
     <div class="wr-row"><span>最優先の弱点</span><b>${w.counts["hi-wrong"]} 件</b></div>
-    <div class="wr-msg">
-      <b>この数字の読み方</b><br>
+    <div class="wr-msg"><b>この数字の読み方</b><br>
       練習中の正答率は<b>低くて構いません</b>。このアプリは単元をわざと混ぜて出題しており(交互練習)、
       研究では練習中の正答率が 89%→60% に下がる一方、本番のテスト成績は約2倍になることが確認されています。
-      正答率ではなく<b>「学習した日数」と「新しく習得した概念」</b>を見てあげてください。<br><br>
-      ${days >= 4 ? "今週はよく続けられています。継続そのものを言葉にして認めてあげてください。"
-        : days >= 1 ? "少しでも机に向かえた日があります。まずそこを認めるところから始めてください。"
-        : "今週は記録がありません。責めずに「何かあった?」と事実を聞くところから。理由が語られたら、それを否定しないでください。"}
-    </div>`;
+      正答率ではなく<b>「学習した日数」と「新しく習得した概念」</b>を見てあげてください。</div>`;
+
+  /* 教科別の内訳 */
+  const bs = Object.entries(p.bySubject);
+  $("#subjectBreakdown").innerHTML = bs.length
+    ? `<div class="bd-title">この期間に触れた教科</div>` + bs.sort((a, b) => b[1].touched - a[1].touched).map(([k, v]) =>
+        `<div class="bd"><span>${SUBJECTS[k].emoji} ${SUBJECTS[k].name}</span>
+          <span class="bd-v">${v.touched}概念(うち習得 ${v.mastered})</span></div>`).join("")
+    : "";
+
+  /* 受験までの位置 */
+  const cd = countdownToExam(S.grade);
+  const kh = kawaiHensa();
+  const n = calcNaishin(S.naishin);
+  const hy = calcHyoteiHeikin(S.hyotei);
+  const st = buildStrategy(kh);
+  $("#parentExamStatus").innerHTML = `
+    ${cd ? `<div class="wr-row"><span>共通テストまで</span><b>${cd.days.toLocaleString()}日(${cd.examYearLabel})</b></div>` : ""}
+    ${S.hensa ? `<div class="wr-row"><span>${MOSHI_TYPES[S.moshiType]?.name || "模試"}</span><b>偏差値 ${S.hensa}</b></div>
+      <div class="wr-row"><span>河合塾基準に換算</span><b>約 ${kh}</b></div>` : `<div class="wr-row"><span>模試</span><b>未入力</b></div>`}
+    ${n.filled ? `<div class="wr-row"><span>内申点</span><b>${n.total} / 45</b></div>` : ""}
+    ${hy ? `<div class="wr-row"><span>高校の評定平均</span><b>${hy.avg}(${hy.eligible})</b></div>` : ""}
+    ${st && st.target.length ? `<div class="wr-row"><span>射程圏の獣医学部</span><b>${st.target.length}校</b></div>` : ""}
+    ${st ? `<div class="wr-msg">${esc(st.advice)}</div>` : `<div class="wr-msg">模試の偏差値を入力すると、志望校との距離と併願プランが出ます。<br>
+      <b>模試の種類によって偏差値は10〜15変わります。</b>大学の偏差値表は河合塾基準なので、進研模試の数字をそのまま比べると実力を大きく見誤ります。</div>`}`;
+
+  /* テキストレポート */
+  $("#reportPre").textContent = buildTextReport(S, days);
 
   // 根拠一覧
   $("#evidenceList").innerHTML = EVIDENCE.map((e, i) => {
@@ -650,7 +864,38 @@ function init() {
   $("#saveHensa").onclick = () => {
     const v = Number($("#hensaIn").value);
     if (!v) return toast("偏差値を入れてください");
-    S.hensa = v; save(); renderGrade(); toast("記録しました");
+    S.hensa = v; S.moshiType = $("#moshiType").value;
+    const k = toKawaiScale(v, S.moshiType);
+    S.hensaLog.push({ value: v, type: S.moshiType, kawai: k ? k.center : null, date: today() });
+    save(); renderAll();
+    toast(k ? `河合塾換算 約${k.center} として記録しました` : "記録しました");
+  };
+  $("#addHyotei").onclick = () => {
+    const v = Number($("#hyoteiIn").value);
+    const label = $("#hyoteiLabel").value.trim() || `記録${Object.keys(S.hyotei).length + 1}`;
+    if (!v || v < 1 || v > 5) return toast("1〜5の評定平均を入れてください");
+    S.hyotei[label] = v; save(); renderGrade();
+    $("#hyoteiIn").value = ""; $("#hyoteiLabel").value = "";
+    toast("追加しました");
+  };
+  $("#calcTime").onclick = () => {
+    const v = Number($("#dailyMin").value);
+    if (!v) return toast("1日の学習時間(分)を入れてください");
+    S.dailyMinutes = v; save(); renderTimeProjection();
+  };
+  $("#timerBtn").onclick = toggleTimer;
+  $$("#periodSeg .seg-btn").forEach((b) => b.onclick = () => {
+    S.parentPeriod = Number(b.dataset.days); save(); renderParent();
+  });
+  $("#copyReport").onclick = async () => {
+    try { await navigator.clipboard.writeText(buildTextReport(S, S.parentPeriod || 7)); toast("コピーしました"); }
+    catch (_) { toast("コピーできませんでした。長押しで選択してください"); }
+  };
+  $("#dlReport").onclick = () => {
+    const blob = new Blob([buildTextReport(S, S.parentPeriod || 7)], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = `${S.name}-学習レポート-${today()}.txt`; a.click();
+    URL.revokeObjectURL(a.href);
   };
   $("#calcTarget").onclick = renderKyotsu;
 

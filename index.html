@@ -72,6 +72,7 @@
 <!-- ══════════ 学習(チャット) ══════════ -->
 <section id="s-study" class="screen">
   <div class="persona-bar" id="personaBar"></div>
+  <div class="timerbar" id="timerBar"><span id="timerText">学習時間 00:00</span><button id="timerBtn" class="timer-btn">▶ 計測開始</button></div>
   <div class="chat" id="chat"></div>
   <div class="conf-panel" id="confPanel" hidden>
     <p class="conf-q">答える前に — どのくらい自信ある?</p>
@@ -157,12 +158,27 @@
   </div>
 
   <div class="card">
-    <h2 class="ct">▶ 模試の偏差値</h2>
+    <h2 class="ct">▶ 高校の評定平均値(推薦の出願資格)</h2>
+    <p class="cs">高1の1学期から高3の1学期までの<b>全科目の5段階平均</b>。学校推薦型選抜では多くの獣医学部が <b>3.8〜4.3以上</b> を条件にします。高1の最初から全部が対象です。</p>
     <div class="form-row">
-      <input id="hensaIn" class="inp" type="number" step="0.1" placeholder="偏差値(例:52.5)">
-      <button class="btn btn-sm" id="saveHensa">記録</button>
+      <input id="hyoteiIn" class="inp" type="number" step="0.1" min="1" max="5" placeholder="学期の平均(例:4.2)">
+      <input id="hyoteiLabel" class="inp" placeholder="時期(例:高1-1学期)">
+      <button class="btn btn-sm" id="addHyotei">追加</button>
     </div>
-    <p class="cs" id="hensaNow"></p>
+    <div id="hyoteiResult"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 模試の偏差値 <span class="ct-note">※模試の種類で10以上変わります</span></h2>
+    <p class="cs cs-warn"><b>ここは最も誤解が多いところです。</b>同じ実力でも、受ける模試によって偏差値は10〜15変わります。母集団が違うためです。大学の偏差値表は<b>河合塾(全統模試)基準</b>なので、そこに換算しないと志望校との距離を見誤ります。</p>
+    <div class="form-row">
+      <select id="moshiType" class="select"></select>
+    </div>
+    <div class="form-row">
+      <input id="hensaIn" class="inp" type="number" step="0.1" placeholder="偏差値(例:58.0)">
+      <button class="btn btn-sm" id="saveHensa">記録して換算</button>
+    </div>
+    <div id="hensaResult"></div>
   </div>
 
   <div class="card">
@@ -178,22 +194,70 @@
   </div>
 </section>
 
-<!-- ══════════ 計画 ══════════ -->
+<!-- ══════════ 受験 ══════════ -->
 <section id="s-plan" class="screen">
+  <div class="card countdown-card">
+    <h2 class="ct">▶ 大学受験まで</h2>
+    <div class="cd-main"><span class="cd-num" id="cdDays">—</span><span class="cd-unit">日</span></div>
+    <p class="cd-sub" id="cdSub"></p>
+    <div class="cd-grid" id="cdGrid"></div>
+  </div>
+
   <div class="card">
-    <h2 class="ct">▶ 獣医学部から逆算した6年計画</h2>
-    <p class="cs">ゴールから逆算しています。今の学年をタップすると詳細が開きます。</p>
+    <h2 class="ct">▶ いつまでに何が終わっていればいいか(逆算)</h2>
+    <p class="cs">受験日から逆算したマイルストーンです。★は特に外せない分岐点。</p>
+    <div id="milestones"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 学習時間の見通し</h2>
+    <div class="form-row">
+      <input id="dailyMin" class="inp" type="number" placeholder="1日の学習時間(分)" min="0" max="900">
+      <button class="btn btn-sm" id="calcTime">計算</button>
+    </div>
+    <div id="timeProjection"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 6年ロードマップ</h2>
+    <p class="cs">今の学年をタップすると詳細が開きます。</p>
     <div id="roadmap"></div>
   </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 入試方式は3つあります</h2>
+    <p class="cs">一般選抜だけが受験ではありません。推薦・総合型は<b>中学・高校での積み重ねがそのまま出願資格</b>になります。</p>
+    <div id="admissionTypes"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 併願戦略</h2>
+    <p class="cs">獣医学部は全国17校しかなく、募集人数も少ないため、組み合わせが合否を大きく左右します。</p>
+    <div id="strategyBox"></div>
+  </div>
+
   <div class="card">
     <h2 class="ct">▶ 共通テスト(2025年度〜 新課程)</h2>
-    <p class="cs">国公立の獣医学部は原則 <b>6教科8科目</b>。2025年度入試から「情報I」が加わりました。</p>
+    <p class="cs">国公立の獣医学部は原則 <b>6教科8科目</b>。2025年度入試から「情報I」が加わり、全国立大学が利用します。</p>
     <div class="form-row">
       <input id="targetRate" class="inp" type="number" placeholder="目標得点率(%)" value="78" min="40" max="100">
       <button class="btn btn-sm" id="calcTarget">逆算する</button>
     </div>
     <div id="kyotsuTable"></div>
   </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 受験イヤーの年間スケジュール</h2>
+    <div id="examCalendar"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 費用の見通し <span class="ct-note">※すべて目安</span></h2>
+    <p class="cs cs-warn">獣医学部は<b>6年制</b>です。国公立と私立で総額が3〜4倍違います。早い段階で知っておくと進路の選び方が変わります。金額は必ず各大学の公式サイトでご確認ください。</p>
+    <div class="form-row"><select id="costSchool" class="select"></select></div>
+    <div id="costResult"></div>
+  </div>
+
   <div class="card">
     <h2 class="ct">▶ 自分で決めた約束</h2>
     <div id="goalList"></div>
@@ -203,9 +267,40 @@
 
 <!-- ══════════ 保護者 ══════════ -->
 <section id="s-parent" class="screen">
+  <div class="card" id="adviceCard">
+    <h2 class="ct">▶ 今週、まず知っておくこと</h2>
+    <div id="guardianAdvice"></div>
+  </div>
+
   <div class="card">
-    <h2 class="ct">▶ 今週のレポート</h2>
+    <h2 class="ct">▶ 気づいたこと <span class="ct-note">良い変化から順に表示します</span></h2>
+    <div id="alertList"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 学習の記録</h2>
+    <div class="seg" id="periodSeg">
+      <button class="seg-btn on" data-days="7">直近7日</button>
+      <button class="seg-btn" data-days="30">30日</button>
+      <button class="seg-btn" data-days="90">90日</button>
+    </div>
     <div id="weeklyReport"></div>
+    <div id="subjectBreakdown"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ 受験までの位置</h2>
+    <div id="parentExamStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="ct">▶ レポートを書き出す</h2>
+    <p class="cs">三者面談や、離れて暮らすご家族との共有にそのまま使える形式です。</p>
+    <div class="form-row">
+      <button class="btn btn-sm" id="copyReport">コピーする</button>
+      <button class="btn btn-sm" id="dlReport">テキストで保存</button>
+    </div>
+    <pre class="report-pre" id="reportPre"></pre>
   </div>
 
   <div class="card accent-card">
@@ -261,7 +356,7 @@
   <button class="nb" data-go="study"><span>💬</span>学習</button>
   <button class="nb" data-go="weak"><span>🎯</span>弱点</button>
   <button class="nb" data-go="grade"><span>📊</span>成績</button>
-  <button class="nb" data-go="plan"><span>🗺️</span>計画</button>
+  <button class="nb" data-go="plan"><span>🎓</span>受験</button>
   <button class="nb" data-go="parent"><span>👪</span>保護者</button>
 </nav>
 
@@ -271,6 +366,8 @@
 <script src="js/curriculum.js"></script>
 <script src="js/memory.js"></script>
 <script src="js/exam.js"></script>
+<script src="js/admission.js"></script>
+<script src="js/guardian.js"></script>
 <script src="js/personas.js"></script>
 <script src="js/api.js"></script>
 <script src="js/app.js"></script>
