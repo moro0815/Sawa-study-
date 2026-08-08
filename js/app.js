@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v33";
+const APP_VERSION = "v34";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -271,6 +271,7 @@ async function srvFetch(action, opts = {}) {
   const res = await fetch(`${srvUrl()}?a=${action}${opts.query || ""}`, {
     method: opts.body ? "POST" : "GET",
     headers: { ...(S.srvToken ? { "X-Sawa-Token": S.srvToken } : {}),
+               ...(opts.pin ? { "X-Sawa-Pin": opts.pin } : {}),
                ...(opts.body ? { "content-type": "application/json" } : {}) },
     body: opts.body,
     cache: "no-store",
@@ -288,9 +289,10 @@ async function srvPing() {
   catch (_) { return null; }
 }
 
-/** 初回設定。合言葉をサーバーに作ってもらって受け取る */
-async function srvSetup() {
-  const j = await srvFetch("init");
+/** 初回設定。★PINが合っているときだけ、サーバーが合言葉を作ってくれる。
+   以前はPINなしで発行できたため、URLを先に知られると横取りできた。 */
+async function srvSetup(pin) {
+  const j = await srvFetch("init", { pin });
   S.srvToken = j.token; S.srvLastError = ""; save();
   return j.token;
 }
@@ -3916,14 +3918,34 @@ async function renderServerBackup() {
         このページを開き直してください。</p></div>`;
     return;
   }
-  box.innerHTML = `<div class="bk-notice warn">
-      <b>準備ができています</b>
-      <p>ボタンを1回押すだけで、以後は自動で預かるようになります。</p></div>
-    <button class="btn btn-primary" id="srvSetup">自動バックアップを始める</button>`;
+  /* ★初期化には、サーバーが作ったPINが要る。
+     以前は「最初に叩いた端末が合言葉を持っていける」形だったので、
+     URLを先に知られると横取りされる余地があった。
+     PINは public_html の外に置かれるので、URLを知っただけでは読めない。 */
+  box.innerHTML = (found.exposed ? `<div class="bk-notice warn">
+      <b>⚠ 保存先が public_html の中になっています</b>
+      <p>本来は public_html の【外】に置きます。サーバー構成の都合で外に取れませんでした。<br>
+        <code>.htaccess</code> で見えないようにはしていますが、Apache以外では効きません。
+        <b>設定が終わったら、念のため PIN のファイルを消してください</b>(自動でも消えます)。</p></div>` : "") +
+    `<div class="bk-notice warn">
+      <b>準備ができています。あと1ステップです</b>
+      <p><b>PINを確認してください。</b>サーバーが自動で作っています。<br>
+        エックスサーバーのファイル管理を開き、<br>
+        <code>${esc(found.pin_where || "public_html と同じ階層の sawa-backups フォルダ")}</code><br>
+        を開くと、8文字のPINが書いてあります。</p></div>
+    <label class="lbl">PIN(8文字)
+      <input type="text" id="srvPin" class="inp" placeholder="例:ABCD2345"
+        autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="16"></label>
+    <button class="btn btn-primary" id="srvSetup">自動バックアップを始める</button>
+    <p class="cs">PINは<b>この1回だけ</b>使います。成功するとサーバーから消え、
+      二度と初期化には使えなくなります。<br>
+      5回まちがえると15分ほど設定できなくなります(総当たり対策)。</p>`;
   document.querySelector("#srvSetup").onclick = async (e) => {
+    const pin = (document.querySelector("#srvPin")?.value || "").trim();
+    if (!pin) { toast("PINを入れてください"); return; }
     e.target.disabled = true; e.target.textContent = "設定しています…";
     try {
-      await srvSetup();
+      await srvSetup(pin);
       await srvBackup(false);
       toast("自動バックアップを始めました");
     } catch (err) {
