@@ -38,7 +38,7 @@
 
 const LUKE_INFO = {
   name: "Luke", ruby: "ルーク", breed: "マルプー", sex: "男の子",
-  about: "マルチーズとトイプードルの子。ふわふわの巻き毛で、人のそばにいるのが大好き。かしこくて、よく人の顔を見ている。",
+  about: "マルチーズとトイプードルの子。赤みのあるアプリコットの巻き毛と、あごより下まで垂れた波打つ耳。人のそばにいるのが大好きで、いつも顔を見上げてくる。",
 };
 
 /* ── きもち ─────────────────────────────────────────────
@@ -453,21 +453,45 @@ function streakDays(S) {
    きもちに応じて、耳・しっぽ・首のかたむき・目のかたちが変わる。 */
 
 const LUKE_EYES = {
-  open:    'M0 0 a7.4 7.4 0 1 0 .01 0Z',
-  wide:    'M0 -1 a8.4 8.4 0 1 0 .01 0Z',
-  arc:     'M-7 3 Q0 -7 7 3',
-  closed:  'M-7 0 Q0 5 7 0',
-  sad:     'M-6.4 3 Q0 -3 6.4 3',
-  sparkle: 'M0 -1.6 a8.8 8.8 0 1 0 .01 0Z',
-  away:    'M-4 0 a5 5 0 1 0 .01 0Z',
+  open:    'M0 0 a7.6 7.6 0 1 0 .01 0Z',
+  wide:    'M0 -1 a8.6 8.6 0 1 0 .01 0Z',
+  arc:     'M-7.5 3 Q0 -7.5 7.5 3',
+  closed:  'M-7.5 0 Q0 5.4 7.5 0',
+  sad:     'M-7 3 Q0 -3 7 3',
+  sparkle: 'M0 -1.6 a9 9 0 1 0 .01 0Z',
+  away:    'M-4 0 a5.2 5.2 0 1 0 .01 0Z',
 };
 
 /**
- * Lukeを描く。
- * 前から順に:しっぽ → からだ → 耳 → 頭 → 顔。
- * きもちで変わるのは【首のかたむき・耳の角度・目のかたち・顔の向き・しっぽの速さ】。
- * @param mood LUKE_MOODS の1つ
- * @param size px
+ * ★もこもこの輪郭を作る。
+ * 円のまわりに n 個の「こぶ」を並べる。こぶの半径を弦の半分より
+ * 少し大きくすると、外へふくらんで巻き毛のシルエットになる。
+ * 円を重ねるより、はるかに犬らしい形が出る。
+ */
+function fluffPath(cx, cy, r, n = 15, sx = 1, sy = 1) {
+  const chord = 2 * r * Math.sin(Math.PI / n);
+  const rr = (chord / 2) * 1.22;
+  const pt = (i) => {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    return [cx + Math.cos(a) * r * sx, cy + Math.sin(a) * r * sy];
+  };
+  const [x0, y0] = pt(0);
+  let d = `M${x0.toFixed(1)} ${y0.toFixed(1)}`;
+  for (let i = 1; i <= n; i++) {
+    const [x, y] = pt(i % n);
+    d += `A${(rr * sx).toFixed(1)} ${(rr * sy).toFixed(1)} 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }
+  return d + "Z";
+}
+
+/**
+ * Lukeを描く。実物にできるだけ寄せている。
+ *   ・毛色はアプリコット(赤みのある金色)。口まわりだけ明るい
+ *   ・耳は【長く波打って、あごより下まで垂れる】。ここが似顔の決め手
+ *   ・頭のてっぺんに毛のふくらみがある
+ *   ・首輪はライムイエロー。内側が黒い2重の作り
+ *   ・鼻は大きくて黒い。目は丸くて濃い
+ * きもちで変わるのは、首のかたむき・耳の角度・目のかたち・顔の向き・しっぽの速さ。
  */
 function lukeSvg(mood, size = 132) {
   const a = mood.art;
@@ -477,84 +501,102 @@ function lukeSvg(mood, size = 132) {
   const fx = a.faceX || 0;
 
   const eyeEl = (cx) => line
-    ? `<path d="${eye}" transform="translate(${cx} 90)" fill="none" stroke="#4a2c17" stroke-width="3.2" stroke-linecap="round"/>`
-    : `<g transform="translate(${cx} 90)"><path d="${eye}" fill="#31200f"/>
-         <circle cx="-2.4" cy="-2.8" r="2.7" fill="#fff"/>
-         <circle cx="2.2" cy="2.4" r="1.3" fill="#fff" opacity=".8"/></g>`;
+    ? `<path d="${eye}" transform="translate(${cx} 90)" fill="none" stroke="#2a1a0f" stroke-width="3.4" stroke-linecap="round"/>`
+    : `<g transform="translate(${cx} 92)"><path d="${eye}" fill="#241509"/>
+         <circle cx="-2.5" cy="-3" r="2.9" fill="#fff"/>
+         <circle cx="2.4" cy="2.6" r="1.4" fill="#fff" opacity=".75"/></g>`;
 
-  const puff = (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}"/>`;
+  // 巻き毛の質感。短い弧を少しだけ置く(入れすぎると汚くなる)
+  const curl = (x, y, r) =>
+    `<path d="M${x - r} ${y} a${r} ${r} 0 0 1 ${r * 2} 0" fill="none" stroke="#c07f3f"
+       stroke-width="1.6" stroke-linecap="round" opacity=".38"/>`;
 
   return `<svg class="luke-svg${a.bob ? " lk-bob" : ""}" viewBox="0 0 200 200" width="${size}" height="${size}"
     role="img" aria-label="Luke(${mood.name})" style="--tail:${a.tail}s">
   <defs>
-    <radialGradient id="lkF" cx="38%" cy="28%">
-      <stop offset="0%" stop-color="#f6cfa0"/><stop offset="100%" stop-color="#e0a367"/>
+    <radialGradient id="lkF" cx="36%" cy="26%">
+      <stop offset="0%" stop-color="#f6d3a0"/><stop offset="62%" stop-color="#dfa25e"/>
+      <stop offset="100%" stop-color="#c8863f"/>
+    </radialGradient>
+    <radialGradient id="lkE" cx="40%" cy="20%">
+      <stop offset="0%" stop-color="#e2ab68"/><stop offset="100%" stop-color="#bc8039"/>
+    </radialGradient>
+    <radialGradient id="lkM" cx="50%" cy="35%">
+      <stop offset="0%" stop-color="#fdeed4"/><stop offset="100%" stop-color="#f2d3a5"/>
     </radialGradient>
   </defs>
 
-  <!-- しっぽ(くるん)。からだより先に描いて、後ろにする -->
+  <!-- しっぽ -->
   <g class="lk-tail">
-    <path d="M144 158 q28 4 32 -18 q3 -19 -13 -21 q-12 -1 -12 11 q0 9 9 9"
-      fill="none" stroke="#d0904f" stroke-width="17" stroke-linecap="round"/>
-    <path d="M144 158 q28 4 32 -18 q3 -19 -13 -21 q-12 -1 -12 11 q0 9 9 9"
-      fill="none" stroke="url(#lkF)" stroke-width="11" stroke-linecap="round"/>
+    <path d="M140 162 q24 2 27 -15 q2 -16 -11 -17 q-10 -1 -10 9 q0 8 8 8"
+      fill="none" stroke="#c8863f" stroke-width="15" stroke-linecap="round"/>
+    <path d="M140 162 q24 2 27 -15 q2 -16 -11 -17 q-10 -1 -10 9 q0 8 8 8"
+      fill="none" stroke="#dfa25e" stroke-width="9" stroke-linecap="round"/>
   </g>
 
-  <!-- からだ(おすわり) -->
-  <g fill="url(#lkF)">
-    ${puff(100, 163, 33)}${puff(76, 169, 21)}${puff(124, 169, 21)}${puff(100, 143, 26)}
-  </g>
-  <g fill="#f4c894">${puff(85, 185, 12)}${puff(115, 185, 12)}</g>
+  <!-- からだ -->
+  <path d="${fluffPath(100, 158, 38, 16, 1, 0.92)}" fill="url(#lkF)"/>
+  <path d="${fluffPath(100, 158, 38, 16, 1, 0.92)}" fill="#000" opacity=".05"
+    transform="translate(0 5)" clip-path="none" style="mix-blend-mode:multiply"/>
+  <path d="${fluffPath(86, 184, 13, 9)}" fill="#eebd85"/>
+  <path d="${fluffPath(114, 184, 13, 9)}" fill="#eebd85"/>
+  ${curl(84, 150, 7)}${curl(116, 152, 7)}${curl(100, 168, 8)}
 
-  <!-- 首輪(ブルー)と、ゴールドのLチャーム -->
-  <path d="M76 138 q24 12 48 0" fill="none" stroke="#2f7bad" stroke-width="10" stroke-linecap="round"/>
-  <path d="M76 138 q24 12 48 0" fill="none" stroke="#4a97c8" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="100" cy="155" r="7.5" fill="#e0a82e"/>
-  <circle cx="100" cy="155" r="7.5" fill="none" stroke="#c28c1c" stroke-width="1.2"/>
-  <text x="100" y="159" font-size="9" font-weight="700" text-anchor="middle" fill="#8a6111"
+  <!-- 首輪(ライムイエロー・内側は黒) -->
+  <path d="M72 132 q28 17 56 0" fill="none" stroke="#2e3327" stroke-width="12" stroke-linecap="round"/>
+  <path d="M72 131 q28 17 56 0" fill="none" stroke="#c9e22e" stroke-width="7.5" stroke-linecap="round"/>
+  <path d="M72 131 q28 17 56 0" fill="none" stroke="#eaf87a" stroke-width="2.4" stroke-linecap="round" opacity=".7"/>
+  <circle cx="100" cy="152" r="6.5" fill="#d9dde2"/>
+  <circle cx="100" cy="152" r="6.5" fill="none" stroke="#a8b0ba" stroke-width="1.1"/>
+  <text x="100" y="156" font-size="8" font-weight="700" text-anchor="middle" fill="#6b7480"
     font-family="system-ui, sans-serif">L</text>
 
-  <!-- あたま(耳ごとかたむく) -->
+  <!-- あたま -->
   <g class="lk-head" style="--tilt:${a.tilt}deg">
-    <!-- たれ耳。頭より外・下に出して、少し濃い色にする -->
-    <g class="lk-ear lk-ear-l" style="--ear:${a.ear}deg" fill="#d2934f">
-      ${puff(43, 96, 22)}${puff(37, 121, 18)}${puff(44, 140, 13)}
+    <!-- 長く波打つ、たれ耳。あごより下まで届く -->
+    <g class="lk-ear lk-ear-l" style="--ear:${a.ear}deg">
+      <path d="${fluffPath(56, 110, 16, 12, 1, 1.9)}" fill="url(#lkE)"/>
+      ${curl(53, 126, 5)}
     </g>
-    <g class="lk-ear lk-ear-r" style="--ear:${a.ear}deg" fill="#d2934f">
-      ${puff(157, 96, 22)}${puff(163, 121, 18)}${puff(156, 140, 13)}
+    <g class="lk-ear lk-ear-r" style="--ear:${a.ear}deg">
+      <path d="${fluffPath(144, 110, 16, 12, 1, 1.9)}" fill="url(#lkE)"/>
+      ${curl(147, 126, 5)}
     </g>
-    <!-- 頭のふわふわ -->
-    <g fill="url(#lkF)">
-      ${puff(100, 86, 46)}${puff(66, 62, 22)}${puff(134, 62, 22)}${puff(100, 43, 24)}
-      ${puff(78, 47, 17)}${puff(122, 47, 17)}${puff(60, 96, 18)}${puff(140, 96, 18)}
-      ${puff(100, 128, 26)}
-    </g>
-    <!-- 顔(ソッポのときは横にずれる) -->
+
+    <!-- 頭。てっぺんに毛のふくらみ -->
+    <path d="${fluffPath(100, 86, 42, 15)}" fill="url(#lkF)"/>
+    <path d="${fluffPath(100, 54, 16, 9)}" fill="url(#lkF)"/>
+    <path d="${fluffPath(80, 60, 12, 8)}" fill="url(#lkF)"/>
+    <path d="${fluffPath(120, 60, 12, 8)}" fill="url(#lkF)"/>
+    ${curl(74, 76, 7)}${curl(126, 76, 7)}${curl(100, 60, 6)}
+
+    <!-- 顔 -->
     <g class="lk-face" style="--fx:${fx}px">
       ${eyeEl(81)}${eyeEl(119)}
-      <ellipse cx="100" cy="114" rx="21" ry="15.5" fill="#fbe4c6"/>
-      <path d="M91.5 107 q8.5 -6.5 17 0 q0 8 -8.5 9.4 q-8.5 -1.4 -8.5 -9.4Z" fill="#31200f"/>
-      <ellipse cx="96" cy="109" rx="2.6" ry="1.6" fill="#fff" opacity=".35"/>
-      <path d="M100 117 q0 5.5 -6.5 5.5 M100 117 q0 5.5 6.5 5.5" fill="none" stroke="#31200f"
-        stroke-width="2.4" stroke-linecap="round"/>
-      ${glad ? `<path d="M88 121 q12 14 24 0 q-12 6 -24 0Z" fill="#31200f"/>
-                <ellipse cx="100" cy="126" rx="6.5" ry="5.8" fill="#f4a0a8"/>
-                <path d="M100 122 v7.5" stroke="#e0848f" stroke-width="1.3" stroke-linecap="round"/>` : ""}
-      <ellipse cx="63" cy="106" rx="9" ry="5.6" fill="#f4a0a8" opacity="${glad ? ".6" : ".38"}"/>
-      <ellipse cx="137" cy="106" rx="9" ry="5.6" fill="#f4a0a8" opacity="${glad ? ".6" : ".38"}"/>
-      ${a.eye === "sad" ? `<path d="M93 125 q7 -5 14 0" fill="none" stroke="#4a2c17" stroke-width="2" stroke-linecap="round"/>` : ""}
+      <ellipse cx="100" cy="113" rx="21" ry="15" fill="url(#lkM)"/>
+      <path d="M90.5 104.5 q9.5 -7.5 19 0 q0 9 -9.5 10.6 q-9.5 -1.6 -9.5 -10.6Z" fill="#241509"/>
+      <ellipse cx="96" cy="107" rx="3" ry="1.8" fill="#fff" opacity=".33"/>
+      ${glad
+        ? `<path d="M87 119 q13 15 26 0 q-13 6.5 -26 0Z" fill="#241509"/>
+           <ellipse cx="100" cy="124.5" rx="7" ry="6.2" fill="#f0989f"/>
+           <path d="M100 120 v8" stroke="#dd7f8a" stroke-width="1.4" stroke-linecap="round"/>`
+        : `<path d="M100 116 q0 6 -7 6 M100 116 q0 6 7 6" fill="none" stroke="#241509"
+             stroke-width="2.5" stroke-linecap="round"/>`}
+      ${a.eye === "sad" ? `<path d="M92 125 q8 -5 16 0" fill="none" stroke="#241509" stroke-width="2.1" stroke-linecap="round"/>` : ""}
+      <ellipse cx="64" cy="105" rx="9" ry="5.8" fill="#ef8f96" opacity="${glad ? ".55" : ".32"}"/>
+      <ellipse cx="136" cy="105" rx="9" ry="5.8" fill="#ef8f96" opacity="${glad ? ".55" : ".32"}"/>
     </g>
   </g>
 
   ${mood.id === "sleepy"
-    ? `<text x="152" y="56" font-size="17" fill="#c9a273" class="lk-zzz">z</text>
-       <text x="168" y="38" font-size="13" fill="#dab88f" class="lk-zzz" style="animation-delay:.7s">z</text>` : ""}
+    ? `<text x="154" y="54" font-size="17" fill="#c9a273" class="lk-zzz">z</text>
+       <text x="170" y="36" font-size="13" fill="#dab88f" class="lk-zzz" style="animation-delay:.7s">z</text>` : ""}
   ${mood.id === "sulk"
-    ? `<text x="138" y="48" font-size="13" fill="#b08a5e">ぷいっ</text>` : ""}
+    ? `<text x="138" y="46" font-size="13" fill="#b08a5e">ぷいっ</text>` : ""}
   ${mood.id === "party"
-    ? `<text x="24" y="48" font-size="22">🎉</text><text x="152" y="42" font-size="20">🎂</text>` : ""}
+    ? `<text x="22" y="46" font-size="22">🎉</text><text x="152" y="40" font-size="20">🎂</text>` : ""}
   ${mood.id === "treasure"
-    ? `<text x="146" y="44" font-size="20">✨</text><text x="30" y="52" font-size="16">✨</text>` : ""}
+    ? `<text x="148" y="42" font-size="20">✨</text><text x="26" y="50" font-size="16">✨</text>` : ""}
 </svg>`;
 }
 

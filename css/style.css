@@ -1046,10 +1046,10 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 
 /* ── Lukeの体 ── */
 .luke-svg { display: block; overflow: visible; }
-.lk-tail { transform-origin: 144px 158px; animation: lkWag var(--tail, 1s) ease-in-out infinite; }
+.lk-tail { transform-origin: 140px 162px; animation: lkWag var(--tail, 1s) ease-in-out infinite; }
 @keyframes lkWag { 0%, 100% { transform: rotate(-13deg); } 50% { transform: rotate(18deg); } }
-.lk-head { transform-origin: 100px 136px; transform: rotate(var(--tilt, 0deg)); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
-.lk-ear { transform-origin: 100px 70px; transform: rotate(var(--ear, 0deg)); transition: transform .45s ease; }
+.lk-head { transform-origin: 100px 132px; transform: rotate(var(--tilt, 0deg)); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
+.lk-ear { transform-origin: 100px 78px; transform: rotate(var(--ear, 0deg)); transition: transform .45s ease; }
 .lk-ear-r { transform: rotate(calc(var(--ear, 0deg) * -1)); }
 .lk-face { transform: translateX(var(--fx, 0px)); transition: transform .5s cubic-bezier(.34,1.4,.64,1); }
 .luke-svg.lk-bob { animation: lkBob .5s ease-in-out infinite; }
