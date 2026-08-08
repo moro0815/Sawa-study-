@@ -463,6 +463,33 @@ const LUKE_EYES = {
 };
 
 /**
+ * ★長い毛の束(房)。根元から先へ細くなる木の葉のかたち。
+ * 実物の頭は【巻き毛のこぶ】ではなく、上から流れて垂れた長い毛。
+ * そこがいちばん似ていなかったので、房を並べて作り直した。
+ * @param deg 0で真上、時計まわり
+ */
+function lock(x, y, len, w, deg) {
+  // 先はとがらせない。とがらせるとトゲに見えて、犬の毛に見えなくなる
+  const a = (-len).toFixed(1), b = (-len * 0.55).toFixed(1), c = (w * 0.96).toFixed(1);
+  return `<path d="M${-w} 0C${-w} ${b} ${-c} ${a} 0 ${a}C${c} ${a} ${w} ${b} ${w} 0Z" `
+    + `transform="translate(${x} ${y}) rotate(${deg})"/>`;
+}
+
+/**
+ * ★たれ耳。上は細く、下へ向かって少し広がり、先は丸い。
+ * 房(lock)を使うと左右が平行になって「板」に見えてしまうので、専用の形にした。
+ * @param deg 0で真下、正の値で外へ開く
+ */
+function earPath(x, y, len, w, deg) {
+  const L = len, W = w;
+  const d = `M0 0`
+    + `C${(-W * .55).toFixed(1)} ${(L * .3).toFixed(1)} ${(-W * 1.15).toFixed(1)} ${(L * .66).toFixed(1)} ${(-W * .8).toFixed(1)} ${(L * .9).toFixed(1)}`
+    + `C${(-W * .4).toFixed(1)} ${(L * 1.06).toFixed(1)} ${(W * .4).toFixed(1)} ${(L * 1.06).toFixed(1)} ${(W * .8).toFixed(1)} ${(L * .9).toFixed(1)}`
+    + `C${(W * 1.15).toFixed(1)} ${(L * .66).toFixed(1)} ${(W * .55).toFixed(1)} ${(L * .3).toFixed(1)} 0 0Z`;
+  return `<path d="${d}" transform="translate(${x} ${y}) rotate(${deg})"/>`;
+}
+
+/**
  * ★もこもこの輪郭を作る。
  * 円のまわりに n 個の「こぶ」を並べる。こぶの半径を弦の半分より
  * 少し大きくすると、外へふくらんで巻き毛のシルエットになる。
@@ -553,22 +580,31 @@ function lukeSvg(mood, size = 132) {
 
   <!-- あたま -->
   <g class="lk-head" style="--tilt:${a.tilt}deg">
-    <!-- 長く波打つ、たれ耳。あごより下まで届く -->
-    <g class="lk-ear lk-ear-l" style="--ear:${a.ear}deg">
-      <path d="${fluffPath(56, 110, 16, 12, 1, 1.9)}" fill="url(#lkE)"/>
-      ${curl(53, 126, 5)}
+    <!-- たれ耳。実物は顔の毛と一体で、境目が見えない -->
+    <g class="lk-ear lk-ear-l" style="--ear:${a.ear}deg" fill="url(#lkE)">
+      ${earPath(70, 74, 46, 13, 14)}
     </g>
-    <g class="lk-ear lk-ear-r" style="--ear:${a.ear}deg">
-      <path d="${fluffPath(144, 110, 16, 12, 1, 1.9)}" fill="url(#lkE)"/>
-      ${curl(147, 126, 5)}
+    <g class="lk-ear lk-ear-r" style="--ear:${a.ear}deg" fill="url(#lkE)">
+      ${earPath(130, 74, 46, 13, -14)}
     </g>
 
-    <!-- 頭。てっぺんに毛のふくらみ -->
-    <path d="${fluffPath(100, 86, 42, 15)}" fill="url(#lkF)"/>
-    <path d="${fluffPath(100, 54, 16, 9)}" fill="url(#lkF)"/>
-    <path d="${fluffPath(80, 60, 12, 8)}" fill="url(#lkF)"/>
-    <path d="${fluffPath(120, 60, 12, 8)}" fill="url(#lkF)"/>
-    ${curl(74, 76, 7)}${curl(126, 76, 7)}${curl(100, 60, 6)}
+    <!-- 顔まわりの長い毛。耳と頭のあいだを埋める -->
+    <g fill="#d99a56">
+      ${earPath(78, 76, 38, 10, 10)}${earPath(122, 76, 38, 10, -10)}
+    </g>
+
+    <!-- 頭。やわらかい丸 -->
+    <path d="${fluffPath(100, 88, 40, 12)}" fill="url(#lkF)"/>
+
+    <!-- ★てっぺんの毛。短く、丸く、少しだけ立ち上がる -->
+    <g fill="url(#lkF)">
+      ${lock(100, 58, 19, 19, 0)}${lock(83, 62, 17, 17, -13)}${lock(117, 62, 17, 17, 13)}
+      ${lock(69, 74, 15, 15, -30)}${lock(131, 74, 15, 15, 30)}
+    </g>
+    <!-- 前髪。目の上に少しかかる -->
+    <g fill="#e7b075" opacity=".85">
+      ${lock(85, 62, 18, 13, 174)}${lock(100, 60, 20, 14, 180)}${lock(115, 62, 18, 13, 186)}
+    </g>
 
     <!-- 顔 -->
     <g class="lk-face" style="--fx:${fx}px">
@@ -583,8 +619,8 @@ function lukeSvg(mood, size = 132) {
         : `<path d="M100 116 q0 6 -7 6 M100 116 q0 6 7 6" fill="none" stroke="#241509"
              stroke-width="2.5" stroke-linecap="round"/>`}
       ${a.eye === "sad" ? `<path d="M92 125 q8 -5 16 0" fill="none" stroke="#241509" stroke-width="2.1" stroke-linecap="round"/>` : ""}
-      <ellipse cx="64" cy="105" rx="9" ry="5.8" fill="#ef8f96" opacity="${glad ? ".55" : ".32"}"/>
-      <ellipse cx="136" cy="105" rx="9" ry="5.8" fill="#ef8f96" opacity="${glad ? ".55" : ".32"}"/>
+      <ellipse cx="64" cy="105" rx="9" ry="5.8" fill="#e09a92" opacity="${glad ? ".34" : ".16"}"/>
+      <ellipse cx="136" cy="105" rx="9" ry="5.8" fill="#e09a92" opacity="${glad ? ".34" : ".16"}"/>
     </g>
   </g>
 
