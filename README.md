@@ -7,6 +7,7 @@
 **学年に応じて姿を変えます。** 中1に受験の話は見せません。見た目も、その時々で気持ちが上がるものを選べます。
 
 → [科学的根拠と出典の全リスト](docs/EVIDENCE.md)
+→ [決めたことと、その理由](docs/DECISIONS.md) ・ [プロジェクトの約束事](CLAUDE.md)
 
 ---
 
@@ -1407,7 +1408,9 @@ sw.js             Service Worker(オフライン対応)
 icons/            アプリアイコン
 robots.txt        検索エンジン除外
 api/backup.php    サーバー自動バックアップの受け口(PHP)
+CLAUDE.md         このプロジェクトの約束事(絶対に守ること・壊れやすい場所)
 docs/SETUP.md     セットアップ手順(ゼロから・詳細版)
+docs/DECISIONS.md 決めたことと、その理由(採らなかった選択肢も)
 docs/htaccess-見本.txt  Apache設定の見本(任意・同梱しない)
 docs/EVIDENCE.md  出典つき研究リスト
 ```
