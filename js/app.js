@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v36";
+const APP_VERSION = "v37";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1229,7 +1229,8 @@ function redrawChat() {
   for (const m of S.chat.slice(-40)) addMsg(m.who, m.text, { img: m.img, persona: m.persona });
   if (!S.chat.length) {
     box.innerHTML = `<div class="hint">話す相手を選んで、話しかけてみてください。<br>
-      宿題や問題集は <b>📷</b> から写真で送れます。<br><br>
+      宿題や問題集は <b>📷</b> から写真で送れます。<br>
+      ${dropUsable() ? "スマホで撮った写真は、<b>この画面に そのまま落とす</b>だけで取り込めます。<br>" : ""}<br>
       ミミ先生🐰 = 教える人 / Luke🐾 = 相棒 / ナギ🦉 = 伴走者</div>`;
   }
   renderUndo();
@@ -1304,7 +1305,9 @@ async function intakeFiles(fileList, how) {
     if (!$("#input").value) {
       $("#input").value = how === "camera"
         ? "学校の宿題を撮りました。一緒に解きたいです。"
-        : "学校の宿題をスキャンしました。一緒に解きたいです。";
+        : (how === "drop" || how === "paste")
+          ? "スマホで撮った宿題を持ってきました。一緒に解きたいです。"
+          : "学校の宿題をスキャンしました。一緒に解きたいです。";
     }
   }
 }
@@ -2869,6 +2872,13 @@ function init() {
   $("#cameraBtn").onclick = takePhoto;
   $("#cameraIn").onchange = (e) => intakeFiles(e.target.files, "camera");
   $("#scanIn").onchange = (e) => intakeFiles(e.target.files, "scan");
+
+  /* iPhoneで撮った宿題を、Macへ放り込む / 貼り付ける。
+     カメラや書く練習が開いている間は受け取らない(そちらの操作を邪魔しないため)。 */
+  const intakeBusy = () => !$("#writePad").hidden || !!document.querySelector(".cam");
+  dropInit((files, how) => intakeFiles(files, how), intakeBusy);
+  pasteInit((files, how) => intakeFiles(files, how), intakeBusy);
+  if (dropUsable()) $("#intakeHint").hidden = false;
   $("#scanHelp").onclick = showScanHelp;
   
 
@@ -3012,13 +3022,11 @@ function init() {
   };
   renderBackup();
 
-  // 復元
-  for (const m of S.chat.slice(-40)) addMsg(m.who, m.text, { img: m.img, persona: m.persona });
-  if (!S.chat.length) {
-    $("#chat").innerHTML = `<div class="hint">話す相手を選んで、話しかけてみてください。<br>
-      宿題や問題集は <b>📷</b> から写真で送れます。<br><br>
-      ミミ先生🐰 = 教える人 / Luke🐾 = 相棒 / ナギ🦉 = 伴走者</div>`;
-  }
+  /* 復元。
+     ★ここには redrawChat() と同じ処理が写して置かれていた。
+     片方だけ直すと、起動直後だけ古い案内が出る(実際にそうなっていた)。
+     書き出し処理で同じ壊れ方をしているので、見つけしだい1本にする。 */
+  redrawChat();
 
   renderPersona(); renderKyotsu(); renderAll(); renderUndo();
 
@@ -4219,6 +4227,19 @@ function showScanHelp() {
   addMsg("sys", "");
   const el = $("#chat").lastElementChild;
   el.innerHTML = `<div class="scan-help">
+    ${dropUsable() ? `<b>📱 スマホで撮った宿題を、このパソコンに持ってくる</b>
+    <p><b>写真アプリを開いて、その写真を この画面へ ドラッグするだけです。</b>
+      ボタンを押す必要はありません。放したところで取り込まれます。</p>
+    <ol>
+      <li>スマホで宿題を撮る(下の「書類スキャン」で撮るといちばんきれいです)</li>
+      <li>撮った写真を <b>共有 → AirDrop</b> でパソコンへ送る
+        <br>※ iCloud写真を使っているなら、この手順は要りません。勝手に届いています</li>
+      <li>パソコンの <b>写真アプリ</b>(または届いた画像)を開く</li>
+      <li>その写真を <b>この画面のうえまで運んで、はなす</b></li>
+    </ol>
+    <p>写真をコピーしてから <b>⌘V</b> を押しても、同じように取り込めます。
+      いちどに<b>6枚</b>まで。PDFも同じように運べます。</p>
+    <hr>` : ""}
     <b>📄 宿題をきれいに取り込むには</b>
     <p><b>いちばん読み取りやすいのは、iPhoneの「書類スキャン」です。</b>
       斜めやゆがみを自動でまっすぐに直し、影を飛ばしてくれるので、

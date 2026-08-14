@@ -216,6 +216,10 @@
       <span class="intake-ic">❓</span><span class="intake-l">やり方</span>
     </button>
   </div>
+  <!-- ドラッグできる端末(パソコン)だけに出す。指の端末では意味がない -->
+  <p class="intake-hint" id="intakeHint" hidden>
+    スマホで撮った写真は、<b>この画面に落とす</b>か <b>⌘V</b> でも取り込めます
+  </p>
   <div class="composer">
     <button id="undoBtn" class="undo-btn" hidden title="直前のやりとりを取り消す">↩ 取り消す</button>
     <textarea id="input" rows="1" placeholder="質問や、思ったことを書いてください…"></textarea>
@@ -802,6 +806,7 @@
 <script src="js/luke.js"></script>
 <script src="js/speech.js"></script>
 <script src="js/camera.js"></script>
+<script src="js/drop.js"></script>
 <!-- ══════════ 書く練習(全画面。ナビは増やさない) ══════════ -->
 <div class="wp" id="writePad" hidden>
   <div class="wp-bar">
