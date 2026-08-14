@@ -91,6 +91,7 @@
     <div class="mi-alt">
       <button class="mi-a" id="msMini">5分だけ</button>
       <button class="mi-a" id="msWrite">✍️ 書く</button>
+      <button class="mi-a" id="msTalk">🎙 英語</button>
       <button class="mi-a" id="msPick">科目を選ぶ</button>
       <button class="mi-a" id="msFree">自由に質問</button>
     </div>
@@ -267,6 +268,15 @@
 
 <!-- ══════════ 英語 ══════════ -->
 <section id="s-eng" class="screen">
+  <!-- 英会話モード。詳しい理屈より先に「話す場」を置く -->
+  <div class="card tk-entry">
+    <h2 class="ct">▶ 🎙 Lukeと英語でおしゃべり</h2>
+    <p class="cs">話しかけると、Lukeが英語で返します(声も出ます)。
+      <b>まちがえても、会話の中では直されません。</b>おわったあとに「ここだけ」を2つまで。
+      英語が出てこないときは<b>日本語で言えばOK</b>——Lukeが「英語ではこう言うよ」と教えてくれます。</p>
+    <button class="btn btn-primary" id="engTalkBtn">🎙 はじめる(5分くらい)</button>
+  </div>
+
   <div class="card eng-hero">
     <h2 class="ct">▶ 英語は、この順で積みます</h2>
     <p class="cs">「会話ができれば受験英語もできるようになる」——<b>これは研究の上では成り立ちません。</b>
@@ -816,7 +826,29 @@
 <script src="js/camera.js"></script>
 <script src="js/drop.js"></script>
 <script src="js/testprep.js"></script>
+<script src="js/talk.js"></script>
 <!-- ══════════ 書く練習(全画面。ナビは増やさない) ══════════ -->
+<!-- ═══ 英会話モード(全画面オーバーレイ。タブは増やさない)═══ -->
+<div class="tk" id="talkPad" hidden>
+  <div class="tk-bar">
+    <button class="tk-x" id="tkClose" aria-label="とじる">✕</button>
+    <span class="tk-topic" id="tkTopic"></span>
+    <span class="tk-turns" id="tkTurns"></span>
+    <button class="tk-end" id="tkEnd">✋ おわる</button>
+  </div>
+  <div class="tk-chat" id="tkChat"></div>
+  <p class="tk-status" id="tkStatus"></p>
+  <p class="tk-live" id="tkLive" hidden></p>
+  <div class="tk-mic-row" id="tkMicRow">
+    <button class="tk-mic" id="tkMic" title="おして、英語で話す">🎤</button>
+    <p class="tk-nomic" id="tkNoMic" hidden>この端末では声の聞き取りが使えないので、下に書いてね</p>
+    <div class="tk-type">
+      <input id="tkInput" placeholder="文字でもOK。日本語でもOK" autocomplete="off">
+      <button id="tkSend" class="tk-send" aria-label="おくる">↑</button>
+    </div>
+  </div>
+</div>
+
 <div class="wp" id="writePad" hidden>
   <div class="wp-bar">
     <button class="wp-x" id="wpClose" aria-label="とじる">✕</button>

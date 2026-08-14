@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v39";
+const APP_VERSION = "v40";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -2840,6 +2840,15 @@ function init() {
   $("#msGo").onclick = () => startToday(planMode);
   $("#msMini").onclick = () => { planMode = planMode === "mini" ? null : "mini"; renderMission(); };
   $("#msWrite").onclick = () => openWritePad("kanji");
+  $("#msTalk").onclick = openTalk;
+  $("#engTalkBtn").onclick = openTalk;
+  $("#tkClose").onclick = closeTalk;
+  $("#tkEnd").onclick = talkEnd;
+  $("#tkMic").onclick = talkMicTap;
+  $("#tkSend").onclick = () => { const v = $("#tkInput").value; $("#tkInput").value = ""; talkUser(v); };
+  $("#tkInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("#tkSend").click(); }
+  });
 
   // AIの使用期限
   $("#expSave").onclick = () => {
@@ -2887,6 +2896,7 @@ function init() {
   });
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !$("#writePad").hidden) closeWritePad();
+    if (e.key === "Escape" && !$("#talkPad").hidden) closeTalk();
   });
   $("#msFree").onclick = () => { go("study"); $("#input").focus(); };
   $("#msEnd").onclick = showWrapUp;
@@ -2919,7 +2929,7 @@ function init() {
 
   /* iPhoneで撮った宿題を、Macへ放り込む / 貼り付ける。
      カメラや書く練習が開いている間は受け取らない(そちらの操作を邪魔しないため)。 */
-  const intakeBusy = () => !$("#writePad").hidden || !!document.querySelector(".cam");
+  const intakeBusy = () => !$("#writePad").hidden || !$("#talkPad").hidden || !!document.querySelector(".cam");
   dropInit((files, how) => intakeFiles(files, how), intakeBusy);
   pasteInit((files, how) => intakeFiles(files, how), intakeBusy);
   if (dropUsable()) $("#intakeHint").hidden = false;
