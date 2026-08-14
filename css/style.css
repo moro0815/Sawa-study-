@@ -1442,6 +1442,18 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
   .luke-btns .btn, .dm-b, .ng-sel, .intake-btn, .sp {
     min-height: 42px;
   }
+  /* ★ここが抜けていた。iPhone SE で実測したら、沙和さんが毎日いちばん押す
+     「Lukeと始める」が 40px、人格の切りかえが 38px、英語の層が 35px だった。
+     .btn(と .btn-primary)を入れ忘れていたのが原因。
+     ★.btn-sm は上で 42px を指定済み。あとから来るこの規則に含めないこと
+       (含めると「小さいボタン」という区別が消える)。 */
+  .btn, .pp, .send, .et, .dream-switch, .tk-s, .tk-end, .tp-x, .wp-x, .tk-x,
+  .exp-q, .persona-bar button {
+    min-height: 44px;
+  }
+  /* ★.persona-bar button のように【クラス名を持たない】押しどころがある。
+     クラス名だけで拾うと漏れる(過去にハンドラでも同じ漏らし方をした)。 */
+  .send, .tk-send { min-width: 44px; }
   .cam-b, .cam-x { min-height: 44px; min-width: 44px; }
   /* 入力欄が16px未満だと、触った瞬間に画面が勝手に拡大する */
   input, select, textarea { font-size: 16px; }
@@ -1561,7 +1573,10 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .exp-quick { display: flex; gap: 5px; flex-wrap: wrap; }
 .exp-q { flex: 1 1 auto; min-width: 66px; background: transparent; border: 1px solid var(--line);
   border-radius: 999px; padding: 8px 6px; font-size: 11.5px; color: var(--ink2);
-  font-family: inherit; cursor: pointer; min-height: 40px; }
+  font-family: inherit; cursor: pointer; min-height: 44px; }
+  /* ★40px だった。指の端末の最低44pxを、定義側で満たしておく。
+     @media (pointer: coarse) の指定より【後ろの行】にあるので、
+     そちらに足しても上書きされて効かない。 */
 
 /* 沙和さんへの案内。むずかしい言葉を出さない */
 .kidnote { border: 1px solid #f0d9a8; background: #fdf6e7; border-radius: 14px;
