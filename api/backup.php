@@ -50,21 +50,45 @@ const PIN_LOCK_SEC  = 900;              // 超えたら15分ロック
 
 /* ── 保存先を決める ────────────────────────────────────────
    public_html の1つ上に置く。そこはブラウザから開けない。 */
+/* 公開領域の外に置けたかどうか。置けていないなら .htaccess で必ず塞ぐ */
+$GLOBALS['sawa_outside_web'] = false;
+
 function storage_dir(): string {
+    /* エックスサーバー以外でも通るように、よくある公開フォルダ名を見る。
+       どれかが見つかれば、その1つ上(=ブラウザから開けない場所)に置く。 */
+    $roots = ['public_html', 'htdocs', 'www', 'web', 'httpdocs'];
     $p = __DIR__;
     while (($parent = dirname($p)) !== $p) {
-        if (basename($p) === 'public_html') return $parent . '/sawa-backups';
+        if (in_array(basename($p), $roots, true)) {
+            $GLOBALS['sawa_outside_web'] = true;
+            return $parent . '/sawa-backups';
+        }
         $p = $parent;
     }
-    return __DIR__ . '/data';           // 見つからないときは同じ場所に(保護つき)
+    /* 見つからなかった場合。ここは【ブラウザから開ける場所】なので、
+       ensure_dir() が .htaccess を必ず書く。 */
+    return __DIR__ . '/data';
 }
 
 function ensure_dir(string $dir): void {
     if (!is_dir($dir) && !@mkdir($dir, 0700, true)) fail(500, '保存先を作れませんでした');
-    // public_html の外に置けなかった場合の保険
-    if (str_contains($dir, 'public_html') && !file_exists($dir . '/.htaccess')) {
-        @file_put_contents($dir . '/.htaccess', "Require all denied\nDeny from all\n");
+
+    /* ★公開領域の外に置けなかったときは、必ず塞ぐ。
+       以前は「パスに public_html を含むとき」に書いていたが、
+       塞ぎたいのは public_html が【見つからなかった】ときのほう。
+       条件が逆で、いちばん危ない場合にだけ書かれていなかった。
+       ここには合言葉(token.txt)と沙和さんの学習記録が入る。 */
+    if ($GLOBALS['sawa_outside_web']) return;
+
+    if (!file_exists($dir . '/.htaccess')) {
+        /* Deny from all は Apache 2.4 で mod_access_compat が無いと
+           500 になる(閉じる側に倒れるので安全だが、正しく書く)。 */
+        @file_put_contents($dir . '/.htaccess',
+            "<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n" .
+            "<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n", LOCK_EX);
     }
+    // .htaccess が効かないサーバーでも一覧だけは見せない
+    if (!file_exists($dir . '/index.html')) @file_put_contents($dir . '/index.html', '', LOCK_EX);
 }
 
 function out(array $v, int $code = 200): never {
@@ -128,13 +152,17 @@ case 'ping':
     /* ★保存先が public_html の外に取れなかった場合(サーバー構成によっては起こる)。
        そのときPINは .htaccess だけで守られる。Apache以外では .htaccess が効かず、
        PINを読まれると初期化を横取りされる余地が戻ってしまう。黙らずに伝える。 */
-    $exposed = str_contains($dir, 'public_html');
+    /* ★storage_dir() が公開領域の外に置けたかどうかで判定する。
+       以前は「パスに public_html を含むか」で見ていたため、
+       いちばん危ない【外に置けなかった場合】に exposed=false と
+       報告し、PINの置き場所の案内まで逆になっていた。 */
+    $exposed = !$GLOBALS['sawa_outside_web'];
     out([
         'ok' => true, 'ready' => $ready, 'version' => 2,
         'pin_required' => !$ready,
         // ★PIN そのものは絶対に返さない。置き場所の案内だけ
         'pin_where' => $ready ? '' : ($exposed
-            ? 'public_html/api/data フォルダの init-pin.txt'
+            ? '沙和ナビを置いたフォルダの中の api/data フォルダにある init-pin.txt'
             : 'public_html と同じ階層にある sawa-backups フォルダの init-pin.txt'),
         'exposed' => $exposed,
     ]);
