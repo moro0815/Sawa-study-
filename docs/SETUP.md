@@ -120,14 +120,16 @@ Claude Opus 5 の料金は、入力100万文字あたり $5、出力100万文字
 
 GitHubのリポジトリページで **[Code] → [Download ZIP]** を押し、ダウンロードしたZIPを展開します。
 
-> ⚠️ **ブランチを選んでから押してください。**
-> このリポジトリには `main` がありません。[Code] の左にあるブランチ名の欄が
-> **`claude/ai-tutor-system-kkqm3g`** になっていることを確かめてから [Download ZIP] を押します。
->
-> 迷ったら、このURLを直接開けば同じZIPが落ちてきます。
-> `https://github.com/moro0815/Sawa-study-/archive/refs/heads/claude/ai-tutor-system-kkqm3g.zip`
+**このURLを直接開くのがいちばん確実です。**
 
-`Sawa-study--claude-ai-tutor-system-kkqm3g` のような長い名前のフォルダができ、中身はこうなっています。
+```
+https://github.com/moro0815/Sawa-study-/archive/refs/heads/main.zip
+```
+
+> 💡 GitHubの画面から落とす場合は、[Code] の左のブランチ欄が **`main`** になっていることだけ確かめてください。
+> `main` が**動いている版**です。`claude/…` は作業用なので、そちらを落とす必要はありません。
+
+`Sawa-study--main` というフォルダができ、中身はこうなっています。
 
 ```
 index.html   share.html   manifest.json   sw.js   robots.txt

@@ -62,7 +62,9 @@
 
 ### リポジトリ
 
-- push は `claude/ai-tutor-system-kkqm3g` **のみ**。`git push -u origin <branch>` を使う
+- 作業と push は `claude/ai-tutor-system-kkqm3g`。`git push -u origin <branch>` を使う
+- **`main` = 保護者が落とす「動いている版」。** 直接 push しない。
+  作業ブランチから**プルリクエスト経由**で入れる(v45 で `main` を作成)
 - `gh` CLI は無い。GitHub操作は MCP ツール経由
 
 ## 命名・実装の流儀
@@ -150,8 +152,6 @@
 
 **未着手・検討中**
 
-- `main` ブランチが無いため、**プルリクエストが作れない**。ZIPを落とすときもブランチ選択が必要
-  → 保護者の判断待ち
 - APIキーをサーバー側プロキシに移す案(安全性は上がるが、**PHPだけ・Node不要・ZIP上書き**を壊す)
   → 現状は CSP で塞ぐほうが割に合うと判断。保留
 - 本家FSRSのパラメータ最適化(生データが十分たまってから)
