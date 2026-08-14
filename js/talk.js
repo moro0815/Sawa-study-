@@ -92,6 +92,12 @@ ${traps.length ? `- 苦手な文法:${traps.map((t) => t.name).join(" / ")} — 
 # 返事の形式(毎回)
 英語の返事を書いたあと、最後の行に必ず「JP: 」に続けて日本語訳を1行で書く。
 (訳は画面で隠しておき、本人が押したときだけ見せます。読み上げには使いません)
+${talkAudioMode() ? `
+# 音声が送られてきたとき
+相手の発話は【録音された声】で届きます。返事の【最初の行】に「HEARD: 」に続けて、
+聞こえた英語をそのまま書いてください(本人の確認用。直さずそのまま)。
+まったく聞き取れなかったときだけ「HEARD: ???」と書き、返事の中で "Sorry? One more time?" と聞き返してください。
+その次の行から英語の返事、最後に JP: の行です。` : ""}
 
 あなたはLuke。犬です。英語の先生ではなく、いっしょにおしゃべりする相棒です。`;
 }
@@ -126,7 +132,34 @@ const TALK_FEEDBACK_TOOL = {
   },
 };
 
-/* ── 音声入力 ──────────────────────────────────────────── */
+/* ── 音声入力 ──────────────────────────────────────────────
+   2系統ある。使えるほうを自動で選ぶ。
+
+   A. 声をそのまま Gemini に送る(こちらが本命)
+      ブラウザの文字起こしを介さず、録音した音声を AI が直接聞く。
+      日本語なまりの英語に対して、文脈ごと理解するぶん取りこぼしが少ない。
+      Gemini は画像と同じ inlineData で音声を受けるので、
+      通信先も APIキーも追加しなくてよい(Whisper 等の導入を見送った理由)。
+      ★他社(Claude など)は音声入力に対応していないため、Gemini のときだけ。
+
+   B. ブラウザの音声認識(Web Speech)
+      Gemini 以外のプロバイダのときの代替。文字起こし→文字を送る。 */
+
+/** 声をそのまま送れるか(Gemini + 録音できる端末) */
+function talkAudioMode() {
+  return S.provider === "google" && typeof canRecord === "function" && canRecord();
+}
+
+const TALK_REC_MAX_MS = 30000;   // 録りっぱなし防止。30秒で自動で止める
+
+function talkBlobToB64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(",")[1] || "");
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
 
 /** 途中経過を画面に出しながら聞く。listenOnce(発音ドリル用)とは別物 */
 function talkListen({ onInterim, timeout = 12000 } = {}) {
@@ -196,11 +229,17 @@ function talkMicEnable(on) {
   if (b) b.disabled = !on || TALK.busy;
 }
 
-/** LukeのJP行を分ける */
-function talkSplitJp(text) {
-  const m = String(text).split(/\nJP: ?/);
-  return { en: (m[0] || "").trim(), jp: (m[1] || "").trim() };
+/** Lukeの返事を HEARD行 / 英語 / JP行 に分ける */
+function talkParse(text) {
+  let rest = String(text).trim();
+  let heard = "";
+  const hm = rest.match(/^HEARD: ?(.*)$/m);
+  if (hm) { heard = hm[1].trim(); rest = rest.replace(/^HEARD: ?.*$\n?/m, ""); }
+  const m = rest.split(/\nJP: ?/);
+  return { heard, en: (m[0] || "").trim(), jp: (m[1] || "").trim() };
 }
+/* 旧名。呼び出しが残っていても壊れないように */
+function talkSplitJp(text) { const p = talkParse(text); return { en: p.en, jp: p.jp }; }
 
 /* ── 会話の流れ ────────────────────────────────────────── */
 
@@ -231,7 +270,7 @@ async function talkUser(text) {
       signal: TALK.abort.signal,
     });
     TALK.msgs = res.messages;
-    const { en, jp } = talkSplitJp(res.text);
+    const { en, jp } = talkParse(res.text);
     talkStatus("");
     talkBubble("luke", en || res.text, jp);
     await talkSpeak(en || res.text);
@@ -247,9 +286,83 @@ async function talkUser(text) {
   TALK.busy = false; talkMicEnable(true);
 }
 
+/** 声をそのままGeminiに送る(A系統) */
+async function talkUserAudio(blob) {
+  if (TALK.busy) return;
+  TALK.busy = true; talkMicEnable(false);
+  const meEl = talkBubble("me", "🎤 …");
+  talkStatus("Lukeが聞いています…");
+  try {
+    const b64 = await talkBlobToB64(blob);
+    const mime = (blob.type || "audio/webm").split(";")[0];
+    TALK.msgs.push({ role: "user", content: [
+      { type: "audio", source: { type: "base64", media_type: mime, data: b64 } },
+      { type: "text", text: "(声で話しました)" },
+    ] });
+    TALK.abort = new AbortController();
+    const res = await chatWithTools({
+      provider: S.provider, model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
+      system: talkSystemPrompt(S),
+      messages: TALK.msgs, tools: [],
+      runTool: async () => ({}),
+      signal: TALK.abort.signal,
+    });
+    TALK.msgs = res.messages;
+    const p = talkParse(res.text);
+    /* 自分の吹き出しを「AIにどう聞こえたか」で置きかえる(確認用) */
+    if (p.heard && p.heard !== "???") {
+      meEl.querySelector(".tk-t").textContent = p.heard;
+      if (/[a-zA-Z]{2,}/.test(p.heard)) {
+        TALK.turns++;
+        document.getElementById("tkTurns").textContent = `🗨 ${TALK.turns}`;
+      }
+    } else {
+      meEl.querySelector(".tk-t").textContent = "🎤(うまく聞こえなかったみたい)";
+    }
+    talkStatus("");
+    talkBubble("luke", p.en || res.text, p.jp);
+    await talkSpeak(p.en || res.text);
+  } catch (e) {
+    talkStatus("");
+    meEl.querySelector(".tk-t").textContent = "🎤(とどかなかった)";
+    if (e?.kind !== "abort") {
+      console.warn("talk-audio:", scrubSecrets(String(e?.message || e), S));
+      if (e?.status === 401 || e?.status === 403) { markKeyInvalid(S); save(); }
+      talkBubble("luke", "(うまくつながらなかったみたい。もういちど話してみて。何度もだめなら、おうちの人に伝えてね)", "");
+    }
+  }
+  TALK.busy = false; talkMicEnable(true);
+}
+
 async function talkMicTap() {
   if (TALK.busy || TALK.speaking) return;
   const mic = document.getElementById("tkMic");
+
+  /* A. Gemini なら、声をそのまま送る(押して話す→もう一度押して送る) */
+  if (talkAudioMode()) {
+    if (typeof recBusy === "function" && recBusy()) {
+      clearTimeout(TALK.recTimer);
+      mic.classList.remove("on"); mic.textContent = "🎤";
+      const r = await recStop();
+      talkStatus("");
+      /* 2KB未満は「押してすぐ離した」— 音がほぼ入っていない */
+      if (r.ok && r.bytes > 2000) talkUserAudio(r.blob);
+      else talkStatus("みじかすぎたみたい。もういちど、押してから話してね");
+      return;
+    }
+    const st = await recStart();
+    if (!st.ok) {
+      if (st.error === "denied") talkStatus("マイクが「だめ」になってるみたい。おうちの人に伝えてね");
+      else talkStatus("マイクが使えないみたい。下の欄に書いてね");
+      return;
+    }
+    mic.classList.add("on"); mic.textContent = "⏹";
+    talkStatus("きいています… 話しおわったら、もういちど押してね");
+    TALK.recTimer = setTimeout(() => { if (typeof recBusy === "function" && recBusy()) talkMicTap(); }, TALK_REC_MAX_MS);
+    return;
+  }
+
+  /* B. それ以外は、ブラウザの音声認識で文字にして送る */
   mic.classList.add("on");
   talkStatus("きいています… 英語で話してみて");
   const live = document.getElementById("tkLive");
@@ -267,6 +380,8 @@ async function talkMicTap() {
 
 async function talkEnd() {
   try { TALK.rec?.stop(); } catch {}
+  clearTimeout(TALK.recTimer);
+  if (typeof recBusy === "function" && recBusy()) await recStop();
   stopSpeaking();
   if (!TALK.turns) { closeTalk(); return; }    // 一言も話していなければ、静かに閉じるだけ
 
@@ -361,8 +476,11 @@ function openTalk() {
   document.getElementById("tkEnd").hidden = false;
   document.getElementById("tkMicRow").hidden = false;
   document.getElementById("tkTopic").textContent = `${TALK.topic.emoji} ${TALK.topic.name}`;
-  const canMic = canRecognize();
-  document.getElementById("tkMic").hidden = !canMic;
+  /* 声の道が1つでもあればマイクを出す(Gemini直送 or ブラウザの音声認識) */
+  const canMic = talkAudioMode() || canRecognize();
+  const mic = document.getElementById("tkMic");
+  mic.hidden = !canMic;
+  mic.textContent = "🎤"; mic.classList.remove("on");
   document.getElementById("tkNoMic").hidden = canMic;
 
   const g = talkGreeting(S);
@@ -375,6 +493,8 @@ function openTalk() {
 function closeTalk() {
   try { TALK.abort?.abort(); } catch {}
   try { TALK.rec?.stop(); } catch {}
+  clearTimeout(TALK.recTimer);
+  if (typeof recBusy === "function" && recBusy()) recStop();   // 録音しっぱなしにしない
   stopSpeaking();
   TALK.open = false;
   document.getElementById("talkPad").hidden = true;

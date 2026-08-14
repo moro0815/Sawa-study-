@@ -136,7 +136,9 @@ function canRecord() {
 }
 
 function recMimeType() {
-  const cands = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
+  /* ★opus(webm)を先に。同じ長さで mp4 の 1/10 ほどの大きさになり、
+     録った声をAIへ送るときの通信量が効いてくる。Safari は webm 非対応なので mp4 に落ちる */
+  const cands = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
   for (const t of cands) {
     if (MediaRecorder.isTypeSupported?.(t)) return t;
   }
@@ -152,9 +154,13 @@ async function recStart() {
   }
   const type = recMimeType();
   try {
-    REC.rec = new MediaRecorder(REC.stream, type ? { mimeType: type } : undefined);
+    /* 声だけなので 32kbps で十分。上限を切っておかないと、環境によっては
+       巨大なファイルになり、AIへ送るときに重くなる */
+    const opts = { audioBitsPerSecond: 32000 };
+    if (type) opts.mimeType = type;
+    REC.rec = new MediaRecorder(REC.stream, opts);
   } catch {
-    return { ok: false, error: "mic-failed" };
+    try { REC.rec = new MediaRecorder(REC.stream); } catch { return { ok: false, error: "mic-failed" }; }
   }
   REC.chunks = [];
   REC.rec.ondataavailable = (e) => { if (e.data?.size) REC.chunks.push(e.data); };

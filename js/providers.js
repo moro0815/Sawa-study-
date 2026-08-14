@@ -299,7 +299,9 @@ function toGeminiContents(messages) {
     const parts = [];
     for (const b of m.content) {
       if (b.type === "text") { if (b.text) parts.push({ text: b.text }); }
-      else if (b.type === "image" || b.type === "document")
+      /* Gemini は画像も書類も音声も、同じ inlineData で受け取る。
+         音声(audio)は英会話モードが使う。Gemini にだけ送る(他社は音声入力に非対応) */
+      else if (b.type === "image" || b.type === "document" || b.type === "audio")
         parts.push({ inlineData: { mimeType: b.source.media_type, data: b.source.data } });
       else if (b.type === "tool_use") parts.push({ functionCall: { name: b.name, args: b.input || {} } });
       else if (b.type === "tool_result") {
