@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v42";
+const APP_VERSION = "v43";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -451,7 +451,12 @@ async function runTool(name, input) {
       const c = CONCEPT_MAP[input.concept_id];
       if (!c) return { error: "unknown concept_id", hint: "curriculum の概念IDを使ってください" };
       const st = mem(c.id);
-      const r = reviewConcept(st, input.grade, input.confidence, Date.now());
+      /* ★時刻は1回だけ取って、記憶モデルと生データの両方に同じ値を渡す。
+         別々に Date.now() を呼ぶと1ミリ秒ずれることがあり、
+         生データから作り直した記憶モデルが元と一致しなくなる。
+         生データが真実の層なので、そこと食い違わせない。 */
+      const answeredAt = Date.now();
+      const r = reviewConcept(st, input.grade, input.confidence, answeredAt);
       // セッション記録
       const d = today();
       let sess = S.sessions.find((x) => x.date === d);
@@ -463,12 +468,14 @@ async function runTool(name, input) {
       const cause = input.correct ? "" : (input.error_cause || "");
       const lvl = input.transfer_level || 1;
       logAnswer(S, {
+        t: answeredAt,
         conceptId: c.id, subject: SUBJECTS[c.s]?.name || "", correct: !!input.correct,
         confidence: input.confidence, cause, level: lvl, tactic: input.tactic,
         minsIn: timerMinutes(),
       });
       /* ★生データ(消さない層)。分析データはここから作り直せる */
       rawPush({
+        t: answeredAt,
         kind: "answer", qid: input.question_id || "", concept: c.id,
         subject: SUBJECTS[c.s]?.name || "", answer: input.answer_text || "",
         expect: "", correct: !!input.correct, conf: input.confidence,

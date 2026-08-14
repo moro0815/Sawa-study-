@@ -118,7 +118,14 @@ const ANSLOG_MAX = 1200;
  */
 function logAnswer(S, o) {
   S.ansLog ||= [];
-  S.ansAgg ||= { n: 0, ok: 0, causes: {}, tactics: {}, hours: {}, first: null };
+  /* ★中身まで1つずつ用意する。
+     `S.ansAgg ||= {…}` だけだと、集計はあるのに causes が無い形
+     (古い版のバックアップを復元したときに起きる)で例外になり、
+     そこから先の記録が丸ごと止まる。欠けているものだけ足す。 */
+  const a0 = (S.ansAgg ||= {});
+  a0.n ||= 0; a0.ok ||= 0;
+  a0.causes ||= {}; a0.tactics ||= {}; a0.hours ||= {};
+  if (!("first" in a0)) a0.first = null;
 
   const now = o.t || Date.now();
   const rec = {
