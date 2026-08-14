@@ -1,5 +1,5 @@
 /* オフラインでも開けるように。APIへの通信はキャッシュしない */
-const CACHE = "sawa-navi-v41";
+const CACHE = "sawa-navi-v42";
 const ASSETS = [
   "./", "./index.html", "./share.html", "./manifest.json",
   "./css/style.css",

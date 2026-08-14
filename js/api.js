@@ -100,15 +100,22 @@ function coerceArgs(input, schema) {
 function trimHistory(messages) {
   const recent = repairPairs(messages.slice(-HISTORY_LIMIT));
 
-  // 画像・PDFは最新の1通ぶんだけ残してトークンを節約
+  /* 重いもの(写真・PDF・声)は最新の1通ぶんだけ残す。
+     ★声を入れ忘れていた。英会話は1往復ごとに音声が積み上がるので、
+     入れないと毎回すべての録音を送り直すことになり、往復するほど遅くなる。
+     声を落としても中身は失われない — 直後のAIの返事に HEARD: 行として
+     「こう聞こえた」が残っているため。 */
+  const HEAVY = ["image", "document", "audio"];
   let mediaKept = false;
   const out = [];
   for (let i = recent.length - 1; i >= 0; i--) {
     const m = recent[i];
-    if (Array.isArray(m.content) && m.content.some((b) => b.type === "image" || b.type === "document")) {
+    const heavy = Array.isArray(m.content) ? m.content.find((b) => HEAVY.includes(b.type)) : null;
+    if (heavy) {
       if (mediaKept) {
         const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
-        out.unshift({ role: m.role, content: "【写真・スキャンを送りました】" + (text ? "\n" + text : "") });
+        const label = heavy.type === "audio" ? "【声で話しました】" : "【写真・スキャンを送りました】";
+        out.unshift({ role: m.role, content: label + (text ? "\n" + text : "") });
         continue;
       }
       mediaKept = true;

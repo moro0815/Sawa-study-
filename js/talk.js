@@ -484,6 +484,10 @@ function openTalk() {
   document.getElementById("tkNoMic").hidden = canMic;
 
   const g = talkGreeting(S);
+  /* ★履歴は必ず user から始める。
+     repairPairs() は先頭の assistant を落とすので、あいさつだけを入れると
+     Lukeが自分の最初の質問を覚えていない状態になり、同じことをもう一度聞く。 */
+  TALK.msgs.push({ role: "user", content: `(英語のおしゃべりを始めます。話題は「${TALK.topic.name}」です)` });
   TALK.msgs.push({ role: "assistant", content: g.en + "\nJP: " + g.jp });
   talkBubble("luke", g.en, g.jp);
   talkSpeak(g.en);
