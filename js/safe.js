@@ -28,6 +28,26 @@
 
 /* ── 端末の状況を調べる ────────────────────────────────── */
 
+/**
+ * ★ファイルをダブルクリックして開いていないか。
+ *   `file://` で開くと、アプリは表示されるのに **AIとの通信だけが失敗する**。
+ *   沙和さんから見ると「Lukeと始める」を押しても何も起きない状態になり、
+ *   原因が分からないまま「壊れてる」で終わる。いちばん起きやすい設置ミス。
+ *   (Service Worker も登録できず、共有シートも使えない)
+ */
+function isFileProtocol() { return location.protocol === "file:"; }
+
+/**
+ * Safari かどうか。
+ * ★7日間の自動削除(ITP)は **iOSだけの話ではなく、Mac の Safari にも効く。**
+ *   Chrome / Edge / Firefox にはこの制限が無い。
+ *   ここを「パソコンだから大丈夫」で片付けると、誤った安心を与える。
+ */
+function isSafari() {
+  const ua = navigator.userAgent;
+  return /Safari/.test(ua) && !/Chrome|Chromium|Edg\/|OPR\//.test(ua);
+}
+
 function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent)
     || (/Macintosh/.test(navigator.userAgent) && (navigator.maxTouchPoints || 0) > 1);
@@ -72,11 +92,19 @@ function safetyReport(S) {
 
   const layers = [
     {
-      id: "home", ok: !isIOS() || isStandalone(),
-      title: "ホーム画面から開く",
-      good: isStandalone() ? "ホーム画面のアイコンから開いています" : "パソコンなので、この心配はありません",
-      bad: "Safariのタブから開いています。**iOSは7日間開かないと保存を全部消します。**"
-         + "ホーム画面に追加して、そのアイコンから開いてください(共有 → ホーム画面に追加)",
+      /* ★以前は「iOSでなければ大丈夫」としていたが、これは誤り。
+         7日ルールは Safari の機能で、Mac の Safari にも効く。 */
+      id: "home", ok: isStandalone() || !isSafari(),
+      title: isIOS() ? "ホーム画面から開く" : "アプリとして開く",
+      good: isStandalone()
+        ? "アイコンから開いています(自動削除の対象外)"
+        : "Safari以外のブラウザなので、7日間の自動削除はありません",
+      bad: isIOS()
+        ? "Safariのタブから開いています。**7日間開かないと保存を全部消します。**"
+          + "共有 → **ホーム画面に追加** して、そのアイコンから開いてください"
+        : "Mac の Safari のタブから開いています。**Safari は7日間開かないと保存を消します**"
+          + "(これは iPhone だけの話ではありません)。ファイル → **Dock に追加** するか、"
+          + "**Chrome で開く**と対象外になります",
       fix: null,
     },
     {

@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v35";
+const APP_VERSION = "v36";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -999,6 +999,14 @@ async function send(override) {
   const text = (override ?? inp.value).trim();
   if (!text && !pendingFiles.length) return;
   if (!curKey()) { addMsg("err", "APIキーが未設定です。「保護者」タブで設定してください。"); go("parent"); return; }
+  /* ★file:// で開かれていると通信できない。ここで先に止めて理由を出す。
+     出さないと「送ったのに何も返ってこない」で終わり、原因にたどりつけない。 */
+  if (isFileProtocol()) {
+    addMsg("err", "この開き方だと、AIとお話しできません。\n\n"
+      + "おうちの人に「沙和ナビ、ひらきかたが ちがうみたい」と伝えてください。\n"
+      + "(書く練習と、これまでの記録は、このままでも見られます)");
+    return;
+  }
   /* ★期限切れ・拒否されたキーでは送らない。ここで止めるのが安全のねらい。
      ただし「何もできない画面」にはしない(下の案内で書く練習へ逃がす)。 */
   if (!keyUsable(S)) {
@@ -1490,9 +1498,20 @@ function renderMission() {
   if (plainRev > 0) bits.push(`<li>復習 × ${plainRev}</li>`);
   if (p.counts.new) bits.push(`<li>新しいこと × ${p.counts.new}</li>`);
 
+  /* ★いちばん最初の日。学習の記録がまだ無いので、AIに出せる復習が無い。
+     一方で書く練習は最初から92問ある。そこへ案内しないと
+     「新しいこと × 1」だけの、さみしい初日になる。 */
+  const firstDay = !Object.keys(S.mem || {}).length;
+
   $("#msBody").innerHTML = done
     ? `<div class="mi-done">✓ 今日のぶんは終わっています<br>
         <span>${(S.sessions || []).find((x) => x.date === todayISO())?.answered || 0}問こたえました。もうやらなくて大丈夫です。</span></div>`
+    : firstDay
+    ? `<div class="mi-min">はじめまして。まずは1つ、話しかけてみてください</div>
+       <ul class="mi-list">
+         <li><b>Lukeと始める</b> … ミミ先生が、いまどこまでできるか見てくれます</li>
+         <li>✍️ <b>書く</b> … 漢字とつづりが <b>${writeStats(S).kanji.total + writeStats(S).spell.total}問</b> 入っています。こちらは今すぐできます</li>
+       </ul>`
     : `<div class="mi-min">${p.comeback ? `<b>${p.daysAway}日ぶり。軽くしておきました</b> ・ ` : ""}約 ${p.minutes} 分で終わります</div>
        <ul class="mi-list">${bits.join("") || "<li>まずは1問だけ</li>"}</ul>`;
 
@@ -2471,6 +2490,16 @@ function renderSafety() {
 
   const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
   box.innerHTML =
+    /* ★これが出ているときは、ほかの何より先に直す必要がある。
+       アプリは開くのに、AIとの通信だけが失敗するので、原因が分かりにくい。 */
+    (isFileProtocol()
+      ? `<div class="bk-notice warn"><b>⚠ 開き方が違います(いちばん先に直してください)</b>
+          <p><b>ファイルを直接ダブルクリックして開いています。</b>この開き方だと、
+             画面は出るのに <b>AIとの会話だけができません。</b>
+             オフラインで開く機能と、共有シートも使えません。<br>
+             <b>サーバーにアップロードして、<code>https://…</code> のアドレスから開いてください。</b>
+             設定の手順は docs/SETUP.md にあります。</p></div>`
+      : "") +
     (rep.naked
       ? `<div class="bk-notice warn"><b>⚠ いま、端末の外に記録がありません</b>
           <p>この状態で「Webサイトデータを消去」されると、<b>すべて失われます。</b>
