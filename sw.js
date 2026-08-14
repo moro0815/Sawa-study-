@@ -1,9 +1,9 @@
 /* オフラインでも開けるように。APIへの通信はキャッシュしない */
-const CACHE = "sawa-navi-v38";
+const CACHE = "sawa-navi-v39";
 const ASSETS = [
   "./", "./index.html", "./share.html", "./manifest.json",
   "./css/style.css",
-  "./js/evidence.js", "./js/curriculum.js", "./js/homework.js", "./js/learning.js", "./js/memory.js", "./js/luke.js", "./js/speech.js", "./js/camera.js", "./js/drop.js", "./js/expiry.js", "./js/safe.js", "./js/rawlog.js", "./js/write.js", "./js/today.js", "./js/cause.js", "./js/transfer.js", "./js/karte.js", "./js/english.js", "./js/careers.js",
+  "./js/evidence.js", "./js/curriculum.js", "./js/homework.js", "./js/learning.js", "./js/memory.js", "./js/luke.js", "./js/speech.js", "./js/camera.js", "./js/drop.js", "./js/testprep.js", "./js/expiry.js", "./js/safe.js", "./js/rawlog.js", "./js/write.js", "./js/today.js", "./js/cause.js", "./js/transfer.js", "./js/karte.js", "./js/english.js", "./js/careers.js",
   "./js/exam.js", "./js/admission.js", "./js/guardian.js", "./js/stage.js",
   "./js/personas.js", "./js/providers.js", "./js/api.js", "./js/app.js", "./js/share.js",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png",

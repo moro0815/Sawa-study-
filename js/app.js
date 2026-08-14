@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v38";
+const APP_VERSION = "v39";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -29,6 +29,7 @@ const defaults = () => ({
   chat: [],              // 表示用ログ [{who, text, persona, img}]
   apiMessages: [],       // API用の生履歴
   grades: [],            // [{subject, name, score, avg, date, eval}]
+  tests: [],             // これからのテスト予定(testprep.js が管理)
   naishin: {},           // subjectId -> 1..5
   hensa: null,           // 模試の偏差値(生の値)
   moshiType: "zento",    // どの模試か — 換算に必要
@@ -865,6 +866,23 @@ async function runTool(name, input) {
                note: "ホームの「✍️ 書く」から練習に出ます。忘れかけたころに自動で出てきます。" };
     }
 
+    /* ── テストの予定を聞いたら記録する ────────────── */
+    case "note_test": {
+      const r = noteTest(S, input);
+      if (!r.ok) return { error: r.reason };
+      save(); renderGrade(); renderMission();
+      toast(`${SUBJECTS[r.test.subject].name}のテスト、おぼえたよ`);
+      return {
+        recorded: true,
+        test: { subject: r.test.subject, date: r.test.date, label: r.test.label },
+        matched_concepts: r.matched.map((id) => ({ id, name: CONCEPT_MAP[id]?.n })),
+        unmatched_keywords: r.unmatched,
+        note: r.unmatched.length
+          ? "対応づけできなかった言葉があります。単元名を確かめて、もう一度 note_test を呼ぶと上書きされます"
+          : "テスト当日まで、毎日の出題が範囲優先になります",
+      };
+    }
+
     /* ── 転移レベルによる習得判定 ────────────────────
        「同じ形が3問解けた」を習得と呼ばないためのしくみ。 */
     case "get_mastery_plan": {
@@ -949,6 +967,9 @@ function statusSummary() {
   const sm = subjectMastery(S.mem);
   const w = weaknessSummary(S.mem);
   const lines = [];
+  /* 今日の日付。note_test で「来週の火曜」を日付にするのに必要 */
+  const _wd = "日月火水木金土"[new Date().getDay()];
+  lines.push(`今日の日付:${todayISO()}(${_wd}曜日)`);
   lines.push(`学年:${S.grade} / 記録済みの回答:${w.totalAnswers}回`);
   const parts = Object.entries(sm).filter(([, v]) => v.learned > 0)
     .map(([k, v]) => `${SUBJECTS[k].name} ${Math.round(v.avgMastery * 100)}%(${v.learned}/${v.total})`);
@@ -1075,6 +1096,7 @@ async function send(override) {
         lukeStatus: lukeStatusText(S),
         karteBlock: kartePromptBlock(S),
         todayBlock: todayPromptBlock(S),
+        testBlock: testPromptBlock(S),
         writeBlock: writePromptBlock(S),
         expiryBlock: expiryPromptBlock(S),
         transferBlock: transferPromptBlock(S),
@@ -1501,6 +1523,13 @@ function renderMission() {
   if (plainRev > 0) bits.push(`<li>復習 × ${plainRev}</li>`);
   if (p.counts.new) bits.push(`<li>新しいこと × ${p.counts.new}</li>`);
 
+  /* テストが近い日は、ひとことだけ添える。
+     ★「あと◯日!」で急かす見せ方はしない(出題の中身が変わるだけ) */
+  const nextTest = upcomingTests(S).filter((t) => daysToTest(t) <= TEST_BOOST_DAYS)[0];
+  if (nextTest && !done) {
+    bits.push(`<li class="mi-test">${SUBJECTS[nextTest.subject].emoji} ${SUBJECTS[nextTest.subject].name}の${esc(nextTest.label)}が近いから、範囲を多めにしてあるよ</li>`);
+  }
+
   /* ★いちばん最初の日。学習の記録がまだ無いので、AIに出せる復習が無い。
      一方で書く練習は最初から92問ある。そこへ案内しないと
      「新しいこと × 1」だけの、さみしい初日になる。 */
@@ -1808,6 +1837,21 @@ function renderDiag(conceptId) {
 }
 
 function renderGrade() {
+  // これからのテスト(予定が無ければカードごと出さない)
+  const tc = $("#cardTests");
+  if (tc) {
+    const ups = upcomingTests(S);
+    tc.hidden = !ups.length;
+    if (ups.length) {
+      $("#testList").innerHTML = testListHtml(S);
+      $("#testList").querySelectorAll(".tp-x").forEach((b) => b.onclick = () => {
+        if (!confirm("この予定を消しますか?(出題はふだんの選び方に戻ります)")) return;
+        S.tests = (S.tests || []).filter((t) => t.id !== b.dataset.id);
+        save(); renderGrade(); renderMission();
+      });
+    }
+  }
+
   // 教科セレクト
   const gs = $("#gSubject");
   if (!gs.dataset.filled) {

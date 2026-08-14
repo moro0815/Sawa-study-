@@ -588,6 +588,32 @@ const TOOLS = [
     },
   },
   {
+    name: "note_test",
+    description:
+      "沙和さんが学校のテストの予定を口にしたら呼ぶ(「来週の火曜に数学のテスト」「範囲は比例と反比例」など)。" +
+      "記録すると、テスト当日まで毎日の出題が自動で範囲優先に切り替わる。" +
+      "★質問攻めにしないこと。わかった分だけで呼んでよい。範囲をあとから聞いたら、同じ教科・同じ日付でもう一度呼べば上書きされる。" +
+      "★概念IDを自分で選ばないこと。範囲は聞いた言葉のまま range_keywords に入れる。対応づけはアプリ側でやり、合わなかった言葉は結果で返す。" +
+      "日付は「今日の日付」(学習状況の欄にある)から計算すること。",
+    input_schema: {
+      type: "object",
+      properties: {
+        subject: {
+          type: "string",
+          enum: ["math", "science", "english", "japanese", "social", "info", "skill"],
+          description: "教科。math=数学 science=理科 english=英語 japanese=国語 social=社会 info=情報 skill=実技4教科",
+        },
+        date: { type: "string", description: "テストの日付(YYYY-MM-DD)。「来週の火曜」なら今日の日付から計算する" },
+        label: { type: "string", description: "テストの呼び名(中間テスト・期末テスト・小テスト など)。不明なら省略" },
+        range_keywords: {
+          type: "array", items: { type: "string" },
+          description: "範囲として聞いた単元・概念の言葉をそのまま(例:「比例」「反比例」「be動詞」)。まだ聞いていなければ省略",
+        },
+      },
+      required: ["subject", "date"],
+    },
+  },
+  {
     name: "get_mastery_plan",
     description:
       "ある概念について、次にどの段階の問題を出すべきかを返す。出題する前に必ずこれを見る。" +
@@ -676,6 +702,7 @@ ${profile.learningBlock || ""}
 ${profile.lukeBlock || ""}
 ${profile.englishBlock || ""}
 ${profile.todayBlock || ""}
+${profile.testBlock || ""}
 ${profile.writeBlock || ""}
 ${profile.expiryBlock || ""}
 ${profile.karteBlock || ""}

@@ -122,11 +122,16 @@ function buildQueue(memStates, opts = {}) {
   const now = Date.now();
   const limit = opts.limit || 20;
   const subjects = opts.subjects || null;
+  /* テスト範囲など、優先したい概念(testprep.js の testTargetIds が渡す)。
+     ★足す点は「自信あり×不正解」の1000より必ず小さくする。
+     テスト前でも、いちばん伸びる場所の順位は崩さない。 */
+  const boost = opts.boostIds || null;
   const scored = [];
 
   for (const c of CONCEPTS) {
     if (subjects && !subjects.includes(c.s)) continue;
     const st = memStates[c.id];
+    const boosted = boost ? boost.has(c.id) : false;
 
     if (st && st.S > 0) {
       const R = retrievability(st, now);
@@ -137,12 +142,13 @@ function buildQueue(memStates, opts = {}) {
       if (overdue >= 0) score += 400 + Math.min(200, overdue * 20);
       score += (1 - R) * 300;
       if (lastQ === "lo-right") score += 60;
-      if (score > 100) scored.push({ concept: c, state: st, score, kind: "review", R });
+      if (boosted) score += 300;
+      if (score > 100) scored.push({ concept: c, state: st, score, kind: "review", R, boosted });
     } else {
       // 未学習 — 前提がすべて習得済みなら「今学べる」
       const pres = c.pre.map((p) => memStates[p]);
       const ready = c.pre.length === 0 || pres.every((p) => p && p.mastery >= 0.6);
-      if (ready) scored.push({ concept: c, state: st || null, score: 120, kind: "new", R: 0 });
+      if (ready) scored.push({ concept: c, state: st || null, score: boosted ? 320 : 120, kind: "new", R: 0, boosted });
     }
   }
 

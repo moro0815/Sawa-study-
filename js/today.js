@@ -86,7 +86,9 @@ function todayPlan(S, modeId) {
   const auto = back ? "mini" : (S.dailyMinutes || 0) >= 25 ? "full" : "normal";
   const m = PLAN_MODES[modeId] || PLAN_MODES[auto];
 
-  const q = buildQueue(S.mem, { limit: 24 });
+  /* テストが近ければ範囲(と、その土台の穴)を優先する。無ければ空集合 */
+  const boost = typeof testTargetIds === "function" ? testTargetIds(S) : new Set();
+  const q = buildQueue(S.mem, { limit: 24, boostIds: boost.size ? boost : null });
   const reviews = q.filter((x) => x.kind === "review");
   const news = q.filter((x) => x.kind === "new");
 
@@ -102,9 +104,9 @@ function todayPlan(S, modeId) {
   const picked = [];
   const push = (x, why) => { if (x && !picked.some((p) => p.concept.id === x.concept.id)) picked.push({ ...x, why }); };
 
-  hot.slice(0, back ? 1 : 2).forEach((x) => push(x, "自信あり×不正解。ここが一番のびる"));
-  rest.slice(0, m.reviews).forEach((x) => push(x, "そろそろ忘れるころ"));
-  if (m.news) news.slice(0, m.news).forEach((x) => push(x, "前提がそろったので、今なら学べる"));
+  hot.slice(0, back ? 1 : 2).forEach((x) => push(x, x.boosted ? "自信あり×不正解、しかもテスト範囲。最優先" : "自信あり×不正解。ここが一番のびる"));
+  rest.slice(0, m.reviews).forEach((x) => push(x, x.boosted ? "テスト範囲" : "そろそろ忘れるころ"));
+  if (m.news) news.slice(0, m.news).forEach((x) => push(x, x.boosted ? "テスト範囲で、まだやっていない" : "前提がそろったので、今なら学べる"));
   push(win, "確実にできるはず。1つ通しておく");
 
   const items = picked.slice(0, m.reviews + m.news + 1);

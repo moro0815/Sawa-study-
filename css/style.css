@@ -263,6 +263,18 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .scan-tip { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; }
 .scan-help hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 
+/* ── 次のテスト(成績タブ)─────────────────────────────── */
+.tp-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  background: var(--accent-soft); border-radius: 10px; margin-bottom: 7px; }
+.tp-sub { font-size: 19px; line-height: 1; }
+.tp-main { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; }
+.tp-range { font-size: 11.5px; font-weight: 400; color: var(--ink2); margin-top: 2px; }
+.tp-x { border: 0; background: transparent; color: var(--ink3); font-size: 14px;
+  padding: 8px; cursor: pointer; border-radius: 8px; }
+.tp-x:active { background: rgba(0, 0, 0, .06); }
+.tp-hint { font-size: 11.5px; color: var(--ink3); line-height: 1.7; margin-top: 4px; }
+.mi-test { color: var(--ink2); }
+
 /* 宿題 */
 .hw-actions { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
 .hw-empty { text-align: center; padding: 14px 4px; line-height: 1.9; }

@@ -374,6 +374,14 @@
 
 <!-- ══════════ 成績 ══════════ -->
 <section id="s-grade" class="screen">
+  <!-- これからのテスト。Lukeに「来週テスト」と話すと入る。予定が無ければカードごと消える -->
+  <div class="card" id="cardTests" hidden>
+    <h2 class="ct">▶ 次のテスト</h2>
+    <div id="testList"></div>
+    <p class="tp-hint">Lukeに「来週の火曜に数学のテスト、範囲は比例」のように話すと、ここに入ります。<br>
+      テストの日まで、毎日の出題が自動で範囲多めになります。</p>
+  </div>
+
   <div class="card">
     <h2 class="ct">▶ 定期テストを記録する</h2>
     <div class="form-row">
@@ -807,6 +815,7 @@
 <script src="js/speech.js"></script>
 <script src="js/camera.js"></script>
 <script src="js/drop.js"></script>
+<script src="js/testprep.js"></script>
 <!-- ══════════ 書く練習(全画面。ナビは増やさない) ══════════ -->
 <div class="wp" id="writePad" hidden>
   <div class="wp-bar">
