@@ -33,7 +33,7 @@ function detectAlerts(S) {
   // 連続学習
   let streak = 0;
   for (let i = 0; i < 30; i++) {
-    const d = new Date(now - i * DAYMS).toISOString().slice(0, 10);
+    const d = todayISO(new Date(now - i * DAYMS));   // ★UTC直書き禁止(CLAUDE.md)
     if (sessions.find((s) => s.date === d && s.answered > 0)) streak++;
     else if (i > 0) break;
   }
@@ -232,7 +232,7 @@ function buildTextReport(S, days = 30) {
   const L = [];
 
   L.push(`【${S.name}さんの学習レポート】`);
-  L.push(`期間:直近${days}日間 / ${new Date().toISOString().slice(0, 10)} 時点`);
+  L.push(`期間:直近${days}日間 / ${todayISO()} 時点`);
   const _c = CAREER_MAP[S.career || DEFAULT_CAREER];
   L.push(`学年:${S.grade}  現在の志望:${_c ? _c.name : "未設定"}`);
   const _hist = S.dreamHistory || [];

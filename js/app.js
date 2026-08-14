@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v37";
+const APP_VERSION = "v38";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1971,14 +1971,14 @@ function renderLetters() {
   let h = "";
   if (arrived.length) {
     h += arrived.slice().reverse().map((l) => {
-      const w = new Date(l.writtenAt).toISOString().slice(0, 10);
+      const w = todayISO(new Date(l.writtenAt));
       return `<div class="letter open"><div class="letter-h">📬 ${w} の自分から</div>
         <div class="letter-t">${esc(l.text)}</div></div>`;
     }).join("");
   }
   if (waiting.length) {
     h += waiting.map((l) => {
-      const o = new Date(l.openAt).toISOString().slice(0, 10);
+      const o = todayISO(new Date(l.openAt));
       const d = Math.ceil((l.openAt - now) / 86400000);
       return `<div class="letter sealed">✉️ ${o} に届きます(あと ${d} 日)</div>`;
     }).join("");
@@ -2123,7 +2123,7 @@ function renderCareer() {
     ? hist.map((h, i) => {
         const cc = CAREER_MAP[h.career];
         if (!cc) return "";
-        const d = new Date(h.at).toISOString().slice(0, 10);
+        const d = todayISO(new Date(h.at));
         return `<div class="dh ${i === hist.length - 1 ? "now" : ""}">
           <span class="dh-e">${cc.emoji}</span>
           <div><div class="dh-n">${esc(cc.name)}${i === hist.length - 1 ? " <span class='dh-cur'>今</span>" : ""}</div>

@@ -303,7 +303,7 @@ function lukeState(S) {
   if (!l.bornAt) {
     // 既定は「いま1歳」。保護者が本当の誕生日に直せる
     const d = new Date(); d.setFullYear(d.getFullYear() - 1);
-    l.bornAt = d.toISOString().slice(0, 10);
+    l.bornAt = todayISO(d);   // ★UTC直書きだと朝0〜9時に前日になる
   }
   l.metAt ||= S.startedAt || Date.now();
   l.tricks ||= [];
@@ -504,7 +504,7 @@ function mixedSubjectDay(S) {
   for (const [id, m] of Object.entries(S.mem || {})) {
     const c = CONCEPT_MAP[id]; if (!c) continue;
     for (const h of m.history || []) {
-      const d = new Date(h.t).toISOString().slice(0, 10);
+      const d = todayISO(new Date(h.t));
       (byDay[d] ||= new Set()).add(c.s);
     }
   }
@@ -516,7 +516,9 @@ function streakDays(S) {
   let n = 0;
   const d = new Date();
   for (let i = 0; i < 400; i++) {
-    const k = new Date(d.getTime() - i * 864e5).toISOString().slice(0, 10);
+    /* ★s.date は現地時間で記録されている。UTCで作った日付と比べると
+       朝0〜9時に連続が切れて見える(実際にそうなっていた) */
+    const k = todayISO(new Date(d.getTime() - i * 864e5));
     if (days.has(k)) n++;
     else if (i > 0) break;
   }

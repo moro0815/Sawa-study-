@@ -45,7 +45,7 @@ function newKarte(raw = {}) {
   return {
     id: "k" + t.toString(36) + Math.floor(t % 997).toString(36),
     t,
-    date: new Date(t).toISOString().slice(0, 10),
+    date: todayISO(new Date(t)),   // ★UTC直書きだと朝0〜9時のカルテが前日扱いになる
     subject: clean(raw.subject, 20) || "",
     conceptIds: ids(raw.concept_ids),
     stumble: clean(raw.stumble),

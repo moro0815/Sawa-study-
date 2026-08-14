@@ -228,8 +228,8 @@ function rawSince(days) {
 }
 function rawSpan() {
   if (!RAW.length) return null;
-  return { from: new Date(RAW[0].t).toISOString().slice(0, 10),
-           to: new Date(RAW.at(-1).t).toISOString().slice(0, 10) };
+  return { from: todayISO(new Date(RAW[0].t)),
+           to: todayISO(new Date(RAW.at(-1).t)) };
 }
 function rawByDevice() {
   const out = {};

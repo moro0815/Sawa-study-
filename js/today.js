@@ -131,8 +131,10 @@ function todayPlan(S, modeId) {
 
 /** 昨日いちばん触った概念(「昨日の比例、もう一回だけ確認しよう」用) */
 function yesterdayThread(S) {
-  const y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-  const rows = (S.ansLog || []).filter((r) => new Date(r.t).toISOString().slice(0, 10) === y);
+  /* ★日付は必ず todayISO()(現地時間)。toISOString() 直書きはUTCになり、
+     日本の朝0〜9時に1日ずれる(CLAUDE.md 参照。実際にここでずれていた) */
+  const y = todayISO(new Date(Date.now() - 864e5));
+  const rows = (S.ansLog || []).filter((r) => todayISO(new Date(r.t)) === y);
   if (!rows.length) return null;
   const by = {};
   for (const r of rows) if (r.c) (by[r.c] ||= { n: 0, ng: 0 }), by[r.c].n++, by[r.c].ng += r.ok ? 0 : 1;
@@ -188,13 +190,13 @@ function lukeHomeLine(S) {
 function wrapUp(S) {
   const d = todayISO();
   const sess = (S.sessions || []).find((x) => x.date === d);
-  const rows = (S.ansLog || []).filter((r) => new Date(r.t).toISOString().slice(0, 10) === d);
+  const rows = (S.ansLog || []).filter((r) => todayISO(new Date(r.t)) === d);
   const got = [];
 
   // 1. Lukeに説明できた概念
   for (const id in S.tr || {}) {
     const t = S.tr[id];
-    if (t.exp?.passed && new Date(t.exp.at).toISOString().slice(0, 10) === d && CONCEPT_MAP[id]) {
+    if (t.exp?.passed && todayISO(new Date(t.exp.at)) === d && CONCEPT_MAP[id]) {
       got.push(`「${CONCEPT_MAP[id].n}」を Luke に説明できた`);
     }
   }
@@ -215,7 +217,7 @@ function wrapUp(S) {
   // 4. 前に間違えたものが、今日は正解できた
   const before = {};
   for (const r of (S.ansLog || [])) {
-    const rd = new Date(r.t).toISOString().slice(0, 10);
+    const rd = todayISO(new Date(r.t));
     if (rd < d && !r.ok) before[r.c] = true;
   }
   const fixed = [...new Set(rows.filter((r) => r.ok && before[r.c]).map((r) => r.c))]
