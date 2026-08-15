@@ -31,18 +31,24 @@ const EXPIRY_PRESETS = [
   { d: 0,   label: "期限なし" },
 ];
 
-function expiryStore(S) { return (S.keyExpiry ||= {}); }
-
-/** 期限日(YYYY-MM-DD)。決めていなければ "" */
-function keyExpiry(S, provider) {
-  return expiryStore(S)[provider || S.provider] || "";
+/* ★期限は「用途(勉強/英語)× 提供元」ごとに持つ。
+   勉強用と英語用でキーが別なので、期限も別でないと意味がない。 */
+function expiryStore(S, use) {
+  migrateAiSettings(S);
+  return (S.keyExpiry[useId(use)] ||= {});
 }
 
-function setKeyExpiry(S, provider, iso) {
-  const p = provider || S.provider;
-  if (!iso) delete expiryStore(S)[p];
-  else expiryStore(S)[p] = String(iso).slice(0, 10);
-  return keyExpiry(S, p);
+/** 期限日(YYYY-MM-DD)。決めていなければ "" */
+function keyExpiry(S, use) {
+  return expiryStore(S, use)[useProviderId(S, use)] || "";
+}
+
+function setKeyExpiry(S, use, iso) {
+  const store = expiryStore(S, use);
+  const p = useProviderId(S, use);
+  if (!iso) delete store[p];
+  else store[p] = String(iso).slice(0, 10);
+  return keyExpiry(S, use);
 }
 
 /** 今日から n 日後の YYYY-MM-DD(現地時間の日付) */
@@ -65,50 +71,52 @@ function validExpiry(iso) {
  * state: none=期限を決めていない / ok=まだ先 / soon=もうすぐ /
  *        today=今日まで / expired=切れた / invalid=提供元に拒否された
  */
-function expiryStatus(S, provider) {
-  const p = provider || S.provider;
-  const iso = keyExpiry(S, p);
-  const invalid = !!(S.keyInvalid || {})[p];
+function expiryStatus(S, use) {
+  const u = useId(use);
+  const p = useProviderId(S, u);
+  const iso = keyExpiry(S, u);
+  const invalid = !!((S.keyInvalid || {})[u] || {})[p];
 
-  if (invalid) return { provider: p, state: "invalid", iso, days: null };
+  if (invalid) return { use: u, provider: p, state: "invalid", iso, days: null };
   /* ★壊れた日付は「決めていない」扱いにする。
      ここで黙って通すと、日付が壊れているのに state が "ok" になり、
      保護が外れたことに誰も気づけない(静かに開く状態がいちばん危ない)。 */
-  if (!validExpiry(iso)) return { provider: p, state: "none", iso: "", days: null, broken: !!iso };
+  if (!validExpiry(iso)) return { use: u, provider: p, state: "none", iso: "", days: null, broken: !!iso };
 
   const today = new Date(todayISO() + "T00:00:00").getTime();
   const end = new Date(iso + "T00:00:00").getTime();
   const days = Math.round((end - today) / 864e5);
 
   return {
-    provider: p, iso, days,
+    use: u, provider: p, iso, days,
     state: days < 0 ? "expired" : days === 0 ? "today" : days <= EXPIRY_SOON_DAYS ? "soon" : "ok",
   };
 }
 
-/** いまAIに送ってよいか */
-function keyUsable(S) {
-  const st = expiryStatus(S);
+/** いまAIに送ってよいか(用途ごと) */
+function keyUsable(S, use) {
+  const st = expiryStatus(S, use);
   return st.state !== "expired" && st.state !== "invalid";
 }
 
 /** 提供元にキーを拒否された(401/403)。期限切れと同じ扱いにする */
-function markKeyInvalid(S, provider) {
-  (S.keyInvalid ||= {})[provider || S.provider] = true;
+function markKeyInvalid(S, use) {
+  migrateAiSettings(S);
+  (S.keyInvalid[useId(use)] ||= {})[useProviderId(S, use)] = true;
 }
 
 /** キーを入れ直したら、拒否の印を消す */
-function clearKeyInvalid(S, provider) {
-  const k = (S.keyInvalid ||= {});
-  delete k[provider || S.provider];
+function clearKeyInvalid(S, use) {
+  migrateAiSettings(S);
+  delete (S.keyInvalid[useId(use)] ||= {})[useProviderId(S, use)];
 }
 
 /* ── 沙和さんへの言葉 ──────────────────────────────────
    ★「API」「キー」「トークン」「有効期限切れ」は1つも使いません。
      使えるのは、本人が実際にできることの説明だけです。 */
 
-function expiryChildNotice(S) {
-  const st = expiryStatus(S);
+function expiryChildNotice(S, use) {
+  const st = expiryStatus(S, use);
   if (st.state === "ok" || st.state === "none") return null;
 
   if (st.state === "expired" || st.state === "invalid") {
@@ -141,10 +149,10 @@ function expiryChildNotice(S) {
 
 /* ── 保護者への言葉 ────────────────────────────────────── */
 
-function expiryParentNotice(S) {
-  const st = expiryStatus(S);
+function expiryParentNotice(S, use) {
+  const st = expiryStatus(S, use);
   const pv = providerOf(st.provider);
-  const name = pv?.short || st.provider;
+  const name = (AI_USES[st.use]?.name || "") + "の " + (pv?.short || st.provider);
 
   if (st.state === "invalid") return {
     level: "alert",
@@ -204,10 +212,15 @@ const SECRET_PATTERNS = [
 function scrubSecrets(text, S) {
   let t = String(text ?? "");
   for (const re of SECRET_PATTERNS) t = t.replace(re, "[伏せました]");
-  // いま持っている実物とも突き合わせる(形の違う提供元に備えて)
-  for (const k of Object.values((S && S.apiKeys) || {})) {
-    if (k && k.length >= 12) t = t.split(k).join("[伏せました]");
-  }
+  /* いま持っている実物とも突き合わせる(形の違う提供元に備えて)。
+     ★apiKeys は「用途 → 提供元 → キー」の入れ子。
+     昔の「提供元 → キー」の形も混ざりうるので、両方たどる。
+     ここを入れ子に追従させ忘れると、実物の鍵が伏せられなくなる。 */
+  const eat = (v) => {
+    if (typeof v === "string") { if (v.length >= 12) t = t.split(v).join("[伏せました]"); return; }
+    if (v && typeof v === "object") for (const x of Object.values(v)) eat(x);
+  };
+  eat((S && S.apiKeys) || {});
   if (S && S.srvToken && S.srvToken.length >= 12) t = t.split(S.srvToken).join("[伏せました]");
   return t;
 }

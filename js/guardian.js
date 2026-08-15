@@ -80,20 +80,27 @@ function detectAlerts(S) {
   /* ★AIの使用期限。保護者タブの一覧にも出す。
      期限のカードは下のほうにあるので、そこまで見ないと気づけなかった。
      沙和さんの学習が止まる話なので、いちばん上の一覧に載せる。 */
-  if (typeof expiryStatus === "function") {
-    const ex = expiryStatus(S);
-    if (ex.state === "invalid") out.push({ level: "alert", icon: "🔑",
-      title: "AIのキーが提供元に拒否されました",
-      body: "いまAIとの会話は止まっています。提供元で新しいキーを作り、保護者タブの下の方にある設定に入れ直してください。沙和さんには「おうちの人に伝えてね」とだけ出ています。",
-      say: "" });
-    else if (ex.state === "expired") out.push({ level: "alert", icon: "⏳",
-      title: `AIの使用期限が ${-ex.days}日前 に切れました`,
-      body: "いまAIとの会話は止まっています(記録は消えていません)。提供元でキーを作り直して入れ直してください。書く練習は使えています。",
-      say: "" });
-    else if (ex.state === "today" || ex.state === "soon") out.push({ level: "warn", icon: "⏳",
-      title: ex.state === "today" ? "AIの使用期限は今日までです" : `AIの使用期限まで あと ${ex.days}日`,
-      body: "切れるとAIとの会話が止まります(記録は消えません)。都合のよいときにキーを入れ替えてください。",
-      say: "" });
+  /* ★勉強用と英語用でキーが別なので、両方を見る。
+     片方だけ切れているときに気づけないと、英会話だけ黙って止まる。 */
+  if (typeof expiryStatus === "function" && typeof AI_USE_IDS !== "undefined") {
+    for (const uid of AI_USE_IDS) {
+      if (!useKey(S, uid)) continue;                 // 設定していない用途は黙っている
+      const ex = expiryStatus(S, uid);
+      const nm = AI_USES[uid].name;                  // 勉強用 / 英語用
+      const stops = uid === "talk" ? "英会話モードが止まります" : "AIとの会話が止まります";
+      if (ex.state === "invalid") out.push({ level: "alert", icon: "🔑",
+        title: `${nm}のキーが提供元に拒否されました`,
+        body: `いま${stops}。提供元で新しいキーを作り、保護者タブの設定で「${nm}」を選んで入れ直してください。沙和さんには「おうちの人に伝えてね」とだけ出ています。`,
+        say: "" });
+      else if (ex.state === "expired") out.push({ level: "alert", icon: "⏳",
+        title: `${nm}の使用期限が ${-ex.days}日前 に切れました`,
+        body: `いま${stops}(記録は消えていません)。提供元でキーを作り直し、設定で「${nm}」を選んで入れ直してください。書く練習は使えています。`,
+        say: "" });
+      else if (ex.state === "today" || ex.state === "soon") out.push({ level: "warn", icon: "⏳",
+        title: ex.state === "today" ? `${nm}の使用期限は今日までです` : `${nm}の使用期限まで あと ${ex.days}日`,
+        body: `切れると${stops}(記録は消えません)。都合のよいときにキーを入れ替えてください。`,
+        say: "" });
+    }
   }
 
   // 学習の中断

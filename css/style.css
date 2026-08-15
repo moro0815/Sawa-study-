@@ -1565,6 +1565,17 @@ input, textarea, select, button { -webkit-appearance: none; appearance: none; bo
 .safe-key { font-size: 11px; font-family: ui-monospace, Menlo, monospace; word-break: break-all;
   margin: 8px 0; resize: none; }
 
+/* ── AIの用途(勉強用 / 英語用)────────────────────────── */
+.use-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.use-t { flex: 1; border: 1.5px solid var(--line); background: var(--card);
+  border-radius: 10px; padding: 10px 6px; font-size: 13px; font-weight: 700;
+  color: var(--ink2); font-family: inherit; cursor: pointer; }
+.use-t.on { border-color: var(--green); color: var(--green); background: var(--accent-soft); }
+.use-sum { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.use-s { font-size: 11px; color: var(--ink2); background: rgba(0,0,0,.04);
+  border-radius: 8px; padding: 5px 9px; }
+@media (pointer: coarse) { .use-t { min-height: 44px; } }
+
 /* ── AIの使用期限 ─────────────────────────────────── */
 .exp-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .exp-row { display: flex; gap: 6px; margin: 8px 0 6px; }
