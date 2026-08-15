@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v45";
+const APP_VERSION = "v46";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -92,10 +92,12 @@ function load() {
 }
 
 /* ── 現在のAI設定 ── */
-function curProvider() { return providerOf(S.provider); }
-function curModel() { return S.model || curProvider().defaultModel; }
-function curKey() { return (S.apiKeys && S.apiKeys[S.provider]) || ""; }
-function curBaseUrl() { return S.baseUrl || curProvider().defaultBaseUrl || ""; }
+function curProvider(use) { return providerOf(useProviderId(S, use)); }
+/* ★どれも「用途」を受け取る。省略したら勉強用。
+   英会話は talk.js から "talk" を渡してくる。 */
+function curModel(use) { return useModel(S, use, PROVIDERS); }
+function curKey(use) { return useKey(S, use); }
+function curBaseUrl(use) { return useBaseUrl(S, use, PROVIDERS); }
 
 /* ── CSP(通信先の制限)との整合チェック ───────────────────
    index.html の connect-src で通信先を固定した。良いことだが、
@@ -1085,13 +1087,13 @@ async function send(override) {
   clearPhoto(); S.lastConf = null; $("#confPanel").hidden = true;
   save();
 
-  const thinking = addMsg("ai", `${PERSONAS[S.persona].name}が考えています…(${providerOf(S.provider).short} ${curModel()} に問い合わせ中)`);
+  const thinking = addMsg("ai", `${PERSONAS[S.persona].name}が考えています…(${curProvider().short} ${curModel()} に問い合わせ中)`);
   thinking.parentElement.classList.add("think");
   let span = null;
 
   try {
     const res = await chatWithTools({
-      provider: S.provider, model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
+      provider: useProviderId(S), model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
       system: buildSystemPrompt(S.persona, {
         name: S.name, grade: S.grade, career: curCareer(),
         pastDreams: (S.dreamHistory || []).map((d) => CAREER_MAP[d.career]?.name).filter(Boolean),
@@ -1126,8 +1128,8 @@ async function send(override) {
 
     // 何がどれだけ動いたかを残す・見せる
     const u = res.stat?.usage || { in: 0, out: 0 };
-    const rec = { ok: true, provider: S.provider, model: curModel(), ms: res.stat?.ms || 0,
-                  in: u.in, out: u.out, yen: usageYen(S.provider, curModel(), u),
+    const rec = { ok: true, provider: useProviderId(S), model: curModel(), ms: res.stat?.ms || 0,
+                  in: u.in, out: u.out, yen: usageYen(useProviderId(S), curModel(), u),
                   tools: res.stat?.tools || [] };
     logApi(rec);
     if (span?.parentElement) {
@@ -1160,7 +1162,7 @@ async function send(override) {
 
     // 履歴の tool_use / tool_result の対応が崩れていたら、その場で直す。
     // 直さないと以後ずっと同じエラーが出続けてしまう。
-    logApi({ ok: false, provider: S.provider, model: curModel(),
+    logApi({ ok: false, provider: useProviderId(S), model: curModel(),
              error: e instanceof ApiError ? e.friendly() : String(e.message || e) });
     const broken = e instanceof ApiError && e.status === 400 && /tool_result|tool_use|tool_call/i.test(e.message);
     if (broken || historyLooksBroken(S.apiMessages)) {
@@ -1319,7 +1321,7 @@ async function intakeFiles(fileList, how) {
   for (const f of files) {
     try {
       if (f.type === "application/pdf") {
-        if (S.provider === "openai") { toast("このAIではPDFを送れません。画像で取り込んでください"); continue; }
+        if (useProviderId(S) === "openai") { toast("このAIではPDFを送れません。画像で取り込んでください"); continue; }
         if (f.size > 4.5 * 1024 * 1024) { toast("PDFが大きすぎます(4.5MBまで)"); continue; }
         pendingFiles.push({ kind: "pdf", name: f.name, data: await fileToBase64(f) });
       } else {
@@ -2480,7 +2482,14 @@ function renderPatterns() {
      できるのは「おうちの人に伝えること」だけなので、そう言わせる。 */
 
 function renderKidExpiry() {
-  const n = expiryChildNotice(S);
+  /* ★勉強用と英語用のどちらかが止まっていたら知らせる。
+     重いほう(止まっている)を優先して1枚だけ出す。
+     2枚出すと12歳には多すぎるので、まず「おうちの人に伝えて」を届ける。 */
+  const notices = AI_USE_IDS
+    .filter((id) => !!useKey(S, id))
+    .map((id) => expiryChildNotice(S, id))
+    .filter(Boolean);
+  const n = notices.find((x) => x.level === "stop") || notices[0] || null;
   for (const id of ["#kidExpiry", "#kidExpiryChat"]) {
     const el = $(id);
     if (!el) continue;
@@ -2501,8 +2510,8 @@ function renderKidExpiry() {
 function renderExpiry() {
   const box = $("#expState");
   if (!box) return;
-  const st = expiryStatus(S);
-  const n = expiryParentNotice(S);
+  const st = expiryStatus(S, uiUse);
+  const n = expiryParentNotice(S, uiUse);
   const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
 
   box.innerHTML = `<div class="bk-notice ${n.level === "ok" ? "ok" : "warn"}">
@@ -2513,8 +2522,8 @@ function renderExpiry() {
     `<button class="exp-q" data-expd="${x.d}">${esc(x.label)}</button>`).join("");
   $$("[data-expd]").forEach((b) => b.onclick = () => {
     const d = Number(b.dataset.expd);
-    setKeyExpiry(S, null, d ? isoAfterDays(d) : "");
-    clearKeyInvalid(S);
+    setKeyExpiry(S, uiUse, d ? isoAfterDays(d) : "");
+    clearKeyInvalid(S, uiUse);
     save(); renderExpiry(); renderKidExpiry(); renderAll();
     toast(d ? `${isoAfterDays(d)} までにしました` : "期限なしにしました");
   });
@@ -2820,14 +2829,28 @@ function init() {
 
   // 設定
   $("#provider").innerHTML = PROVIDER_IDS
-    .map((id) => `<option value="${id}" ${S.provider === id ? "selected" : ""}>${esc(PROVIDERS[id].label)}</option>`).join("");
+    .map((id) => `<option value="${id}">${esc(PROVIDERS[id].label)}</option>`).join("");
   $("#provider").onchange = () => {
-    S.provider = $("#provider").value;
-    S.model = "";           // プロバイダが変わればモデルも既定に戻す
-    S.baseUrl = "";
-    save(); renderProviderUI();
+    const a = aiUse(S, uiUse);
+    a.provider = $("#provider").value;
+    a.model = "";           // 会社が変わればモデルは自動に戻す
+    a.baseUrl = "";
+    save(); renderProviderUI(); renderExpiry();
   };
+  /* 用途(勉強用 / 英語用)の切りかえ。下の欄はすべて選んだほうを編集する */
+  $("#useTabs").innerHTML = AI_USE_IDS.map((id) =>
+    `<button class="use-t" data-use="${id}">${AI_USES[id].emoji} ${esc(AI_USES[id].name)}</button>`).join("");
+  $$("[data-use]").forEach((b) => b.onclick = () => {
+    uiUse = b.dataset.use;
+    renderProviderUI(); renderExpiry();
+    $("#settingsMsg").textContent = "";
+  });
   $("#fetchModels").onclick = fetchModelList;
+  $("#modelAuto").onclick = () => {
+    aiUse(S, uiUse).model = "";        // 空にする = 自動にもどす
+    save(); renderProviderUI();
+    toast("自動にもどしました");
+  };
   $("#testApi").onclick = testApi;
   renderProviderUI();
 
@@ -2861,7 +2884,7 @@ function init() {
   $("#expSave").onclick = () => {
     const v = $("#expDate").value;
     if (!v) { toast("日付を選んでください"); return; }
-    setKeyExpiry(S, null, v); clearKeyInvalid(S);
+    setKeyExpiry(S, uiUse, v); clearKeyInvalid(S, uiUse);
     save(); renderExpiry(); renderKidExpiry(); renderAll();
     toast(`${v} までにしました`);
   };
@@ -3012,12 +3035,15 @@ function init() {
 
   // 設定保存
   $("#saveSettings").onclick = () => {
-    const prevKey = S.apiKeys[S.provider];
-    S.apiKeys[S.provider] = $("#apiKey").value.trim();
+    const prevKey = useKey(S, uiUse);
+    setUseKey(S, uiUse, $("#apiKey").value);
     // ★キーを入れ替えたら、拒否の印を消す(入れ直したのに止まったままだと詰む)
-    if (S.apiKeys[S.provider] !== prevKey) clearKeyInvalid(S);
-    S.model = $("#model").value.trim();
-    if (curProvider().needsBaseUrl) S.baseUrl = $("#baseUrl").value.trim();
+    if (useKey(S, uiUse) !== prevKey) clearKeyInvalid(S, uiUse);
+    /* ★モデル名は空のままにできること。
+       空 = 自動。ここで既定を書き戻すと、モデルがその版に固定され、
+       新しいものが出ても乗り換わらなくなる(前はそうなっていた)。 */
+    aiUse(S, uiUse).model = $("#model").value.trim();
+    if (curProvider(uiUse).needsBaseUrl) aiUse(S, uiUse).baseUrl = $("#baseUrl").value.trim();
     S.name = $("#pName").value.trim() || "沙和";
     const prevGrade = S.grade;
     S.grade = $("#pGrade").value;
@@ -3917,7 +3943,7 @@ function renderApiPanel() {
         ${okLast ? esc(apiMetaLine(last)) : esc(last.error || "")}` :
         "学習タブで話しかけると、ここに記録が出ます。"}</p>
     </div>
-    <div class="row-kv"><span>使っているAI</span><b>${esc(providerOf(S.provider).short)} / ${esc(curModel())}</b></div>
+    <div class="row-kv"><span>使っているAI</span><b>${esc(curProvider().short)} / ${esc(curModel())}</b></div>
     <div class="row-kv"><span>直近30日のやりとり</span><b>${t.calls} 回</b></div>
     <div class="row-kv"><span>直近30日の概算料金</span><b>${t.yen ? "約" + t.yen + " 円" : "—"}</b></div>
     <div class="row-kv"><span>AIが道具を使った回数</span><b>${t.tools} 回</b></div>
@@ -3947,7 +3973,7 @@ async function testApi() {
     if (!curKey()) throw new Error("APIキーが設定されていません");
     let reply = "";
     const res = await sendToProvider({
-      provider: S.provider, model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
+      provider: useProviderId(S), model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
       system: "あなたは日本語で答えます。",
       messages: [{ role: "user", content: "『準備できました』とだけ返してください。" }],
       tools: null,
@@ -3955,16 +3981,16 @@ async function testApi() {
     });
     const ms = Date.now() - t0;
     const u = res.usage || { in: 0, out: 0 };
-    const yen = usageYen(S.provider, curModel(), u);
+    const yen = usageYen(useProviderId(S), curModel(), u);
     const text = reply || res.content.find((b) => b.type === "text")?.text || "(返事なし)";
-    logApi({ ok: true, provider: S.provider, model: curModel(), ms, in: u.in, out: u.out, yen, tools: [], test: true });
+    logApi({ ok: true, provider: useProviderId(S), model: curModel(), ms, in: u.in, out: u.out, yen, tools: [], test: true });
     save();
     out.innerHTML = `<div class="bk-notice ok"><b>✓ つながりました</b>
       <p>AIの返事:「${esc(text.trim().slice(0, 60))}」<br>
-        ${esc(providerOf(S.provider).short)} ${esc(curModel())} ・ ${(ms / 1000).toFixed(1)}秒
+        ${esc(curProvider().short)} ${esc(curModel())} ・ ${(ms / 1000).toFixed(1)}秒
         ・ ${u.in + u.out}トークン ${yen != null ? `・ 約${yen < 0.1 ? "0.1未満" : yen}円` : ""}</p></div>`;
   } catch (e) {
-    logApi({ ok: false, provider: S.provider, model: curModel(), ms: Date.now() - t0,
+    logApi({ ok: false, provider: useProviderId(S), model: curModel(), ms: Date.now() - t0,
              error: e instanceof ApiError ? e.friendly() : String(e.message || e) });
     save();
     out.innerHTML = `<div class="bk-notice warn"><b>✕ つながりませんでした</b>
@@ -4149,22 +4175,54 @@ function renderBackup() {
 
 /* ═══════════════ AIプロバイダの設定画面 ═══════════════ */
 
+/* いま設定画面で編集している用途。画面の状態なので保存しない */
+let uiUse = DEFAULT_USE;
+
 function renderProviderUI() {
-  const p = curProvider();
-  $("#provider").value = S.provider;
+  const a = aiUse(S, uiUse);
+  const p = curProvider(uiUse);
+  const u = AI_USES[uiUse];
+
+  $$("[data-use]").forEach((b) => b.classList.toggle("on", b.dataset.use === uiUse));
+  $("#useWhat").innerHTML = `<b>${u.emoji} ${esc(u.name)}</b> の設定をしています — ${esc(u.what)}`;
+  $("#useOther").innerHTML = AI_USE_IDS.map((id) => {
+    const k = useKey(S, id);
+    return `<span class="use-s">${AI_USES[id].emoji} ${esc(AI_USES[id].name)}:` +
+      (k ? `${esc(providerOf(useProviderId(S, id)).short)} / ${esc(useModel(S, id, PROVIDERS))}`
+         : "<b>まだ設定していません</b>") + `</span>`;
+  }).join("");
+  $("#useShare").hidden = !usesShareKey(S);
+  /* 英語用は Gemini だと声をそのまま聞ける。押しつけずに、事実だけ伝える */
+  const tip = $("#useTip");
+  const geminiTalk = uiUse === "talk" && a.provider !== "google";
+  tip.hidden = !geminiTalk;
+  if (geminiTalk) tip.innerHTML =
+    "💡 英語用を <b>Google(Gemini)</b> にすると、<b>録音した声をそのままAIが聞きます</b>"
+    + "(文字にしてから送らないので、日本語なまりでも取りこぼしが減ります)。"
+    + "ほかの会社では、ブラウザの聞き取りで文字にしてから送ります。どちらでも会話はできます。";
+
+  $("#provider").value = a.provider;
   $("#providerNote").textContent = p.note;
 
-  $("#model").value = curModel();
+  /* ★モデル欄には既定を書き込まない。空のままにしておく。
+     書き込むと、保存した瞬間にモデルがその版で固定され、
+     新しいモデルが出ても乗り換わらなくなる。 */
+  $("#model").value = a.model || "";
+  $("#model").placeholder = `自動(いまは ${p.defaultModel})`;
   $("#modelList").innerHTML = p.models
     .map((m) => `<option value="${esc(m.id)}">${esc(m.label || "")}</option>`).join("");
   $("#modelNote").innerHTML = modelNoteHtml(p);
+  $("#modelAutoRow").hidden = !a.model;
+  $("#modelAutoNow").textContent = a.model
+    ? `いま「${a.model}」に固定しています`
+    : `自動です(いまは ${p.defaultModel} を使います)`;
 
   const needBase = !!p.needsBaseUrl;
   $("#baseUrlRow").hidden = !needBase;
-  if (needBase) $("#baseUrl").value = curBaseUrl();
+  if (needBase) $("#baseUrl").value = curBaseUrl(uiUse);
 
   // ★通信先がCSPで許可されているか。ダメなら直し方まで書く
-  const blocked = needBase ? cspBlockedHost(curBaseUrl()) : "";
+  const blocked = needBase ? cspBlockedHost(curBaseUrl(uiUse)) : "";
   const bw = $("#baseUrlWarn");
   bw.hidden = !blocked;
   if (blocked) {
@@ -4180,9 +4238,9 @@ function renderProviderUI() {
        もしどこかに不正なスクリプトが入り込んでも、キーを知らないサーバーへは送れません。`
     : "";
 
-  $("#apiKeyLabel").firstChild.nodeValue = p.keyLabel;
+  $("#apiKeyLabel").firstChild.nodeValue = `${u.name}の ${p.keyLabel}`;
   $("#apiKey").placeholder = p.keyPlaceholder;
-  $("#apiKey").value = curKey();
+  $("#apiKey").value = useKey(S, uiUse);
   $("#keyNote").innerHTML =
     `<a href="${p.keyUrl}" target="_blank" rel="noopener">${esc(new URL(p.keyUrl).host)}</a> で取得できます。`;
 }
@@ -4190,7 +4248,7 @@ function renderProviderUI() {
 /** モデルごとの目安金額。価格が不明なものは出さない */
 function modelNoteHtml(p) {
   const rows = p.models.filter((m) => m.inUsd != null).map((m) => {
-    const yen = costPerTurnYen(S.provider, m.id);
+    const yen = costPerTurnYen(useProviderId(S, uiUse), m.id);
     return `${esc(m.label)} … 1往復あたり<b>約${yen}円</b>`;
   });
   if (!rows.length) return "モデル名は提供元の表記どおりに入力してください。";
@@ -4199,13 +4257,13 @@ function modelNoteHtml(p) {
 }
 
 async function fetchModelList() {
-  const key = $("#apiKey").value.trim() || curKey();
+  const key = $("#apiKey").value.trim() || useKey(S, uiUse);
   if (!key) { $("#settingsMsg").textContent = "先にAPIキーを入れてください"; return; }
   const btn = $("#fetchModels");
   btn.disabled = true; btn.textContent = "取得中…";
   try {
-    const base = curProvider().needsBaseUrl ? ($("#baseUrl").value.trim() || curBaseUrl()) : "";
-    const list = await listModels(S.provider, key, base);
+    const base = curProvider(uiUse).needsBaseUrl ? ($("#baseUrl").value.trim() || curBaseUrl(uiUse)) : "";
+    const list = await listModels(useProviderId(S, uiUse), key, base);
     if (!list.length) throw new Error("使えるモデルが見つかりませんでした");
     $("#modelList").innerHTML = list
       .map((m) => `<option value="${esc(m.id)}">${esc(m.label || "")}</option>`).join("");

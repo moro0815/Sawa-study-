@@ -700,13 +700,26 @@
   <div class="card">
     <h2 class="ct">▶ 設定</h2>
 
+    <!-- 勉強用 / 英語用。下の欄はすべて、選んだほうの設定を編集する -->
+    <div class="use-tabs" id="useTabs"></div>
+    <p class="cs" id="useWhat"></p>
+    <div class="use-sum" id="useOther"></div>
+
     <label class="lbl">使うAI
       <select id="provider" class="select"></select></label>
     <p class="cs" id="providerNote"></p>
+    <p class="cs" id="useTip" hidden></p>
 
     <label class="lbl">モデル
-      <input type="text" id="model" class="inp" list="modelList" placeholder="モデル名">
+      <input type="text" id="model" class="inp" list="modelList" placeholder="自動">
       <datalist id="modelList"></datalist></label>
+    <p class="cs" id="modelAutoNow"></p>
+    <p class="cs"><b>空のままにしておくのがおすすめです。</b>
+      空 = 自動で、そのとき推奨のモデルを使います。<b>モデル名を書くとその版に固定され、
+      新しく性能の良いものが出ても切り替わりません。</b></p>
+    <div id="modelAutoRow" hidden>
+      <button class="btn btn-sm" id="modelAuto">自動にもどす(欄を空にする)</button>
+    </div>
     <p class="cs" id="modelNote"></p>
     <button class="btn btn-ghost" id="fetchModels">使えるモデルの一覧を取得</button>
 
@@ -717,7 +730,9 @@
     <label class="lbl" id="apiKeyLabel">APIキー
       <input type="password" id="apiKey" class="inp" placeholder="…"></label>
     <p class="cs" id="keyNote"></p>
-    <p class="cs">キーはこの端末のブラウザ内にのみ保存されます。AIごとに別々に覚えるので、切り替えても入れ直す必要はありません。</p>
+    <p class="cs">キーはこの端末のブラウザ内にのみ保存されます。<b>用途ごと・AIごとに別々に覚える</b>ので、切り替えても入れ直す必要はありません。</p>
+    <p class="warn-note" id="useShare" hidden>⚠ 勉強用と英語用に<b>同じキー</b>が入っています。
+      動きますが、<b>請求を分けて見られません</b>。提供元で2本目のキーを作ると分けられます。</p>
     <p class="cs" id="cspNote"></p>
 
     <div class="exp-box" id="expBox">
@@ -825,6 +840,7 @@
 <script src="js/speech.js"></script>
 <script src="js/camera.js"></script>
 <script src="js/drop.js"></script>
+<script src="js/aiuse.js"></script>
 <script src="js/testprep.js"></script>
 <script src="js/talk.js"></script>
 <!-- ══════════ 書く練習(全画面。ナビは増やさない) ══════════ -->
