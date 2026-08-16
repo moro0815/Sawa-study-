@@ -157,8 +157,14 @@ case 'ping':
        いちばん危ない【外に置けなかった場合】に exposed=false と
        報告し、PINの置き場所の案内まで逆になっていた。 */
     $exposed = !$GLOBALS['sawa_outside_web'];
+    /* ★預けた記録があるかどうか。
+       端末のデータが消えた新しい端末に「サーバーに記録が残っています」と
+       伝えるために要る。件数までは返さない(素性を明かしすぎない)。 */
+    $has = is_dir($dir) && count(glob($dir . '/bk-*.json') ?: []) > 0;
     out([
-        'ok' => true, 'ready' => $ready, 'version' => 2,
+        'ok' => true, 'ready' => $ready, 'version' => 3,
+        'has_backups' => $has,
+        'can_recover' => $ready && $has,
         'pin_required' => !$ready,
         // ★PIN そのものは絶対に返さない。置き場所の案内だけ
         'pin_where' => $ready ? '' : ($exposed
@@ -198,6 +204,57 @@ case 'init':
     if (@file_put_contents($tokenFile, $token, LOCK_EX) === false) fail(500, '合言葉を保存できませんでした');
     @chmod($tokenFile, 0600);
     /* ★使い終わったPINは消す。二度と初期化に使えないようにする */
+    @unlink($pinFile);
+    @unlink($tryFile);
+    out(['ok' => true, 'token' => $token]);
+
+/* ── 取り戻す(端末のデータが消えたとき)──────────────────
+   ★なぜ要るのか。
+   端末の記録が消えると、合言葉(token)も一緒に消える。
+   サーバーには記録が残っているのに、取りに行く鍵が無い状態になる。
+   これまでは復元用リンクを作っていない限り詰んでいた。
+
+   ★なぜPINで許してよいのか。
+   PINは public_html の【外】にあり、ブラウザからは読めない。
+   それを読めるということは、サーバーのファイルを操作できる人
+   ——つまり契約者本人だということ。init と同じ根拠。
+
+   ★新しい合言葉を作らない。
+   作り直すと、これまで預けた記録が読めなくなる。今あるものを返す。 */
+case 'recover_start':
+    /* PINを用意するだけ。中身は返さない(場所だけ案内する) */
+    ensure_dir($dir);
+    if (!is_file($tokenFile)) fail(409, 'このサーバーはまだ設定されていません。「自動バックアップを始める」から設定してください。');
+    ensure_pin($pinFile);
+    if (!is_file($pinFile)) fail(500, 'PINファイルを作れませんでした。サーバーの書き込み権限を確認してください。');
+    out([
+        'ok' => true,
+        'pin_where' => $GLOBALS['sawa_outside_web']
+            ? 'public_html と同じ階層にある sawa-backups フォルダの init-pin.txt'
+            : '沙和ナビを置いたフォルダの中の api/data フォルダにある init-pin.txt',
+    ]);
+
+case 'recover':
+    ensure_dir($dir);
+    if (!is_file($tokenFile)) fail(409, 'このサーバーはまだ設定されていません。');
+    ensure_pin($pinFile);
+    if (!is_file($pinFile)) fail(500, 'PINファイルを作れませんでした。');
+
+    $t = pin_tries($tryFile);
+    if ($t['until'] > time()) {
+        fail(429, '間違いが続いたため、しばらく取り戻せません。' . ceil(($t['until'] - time()) / 60) . '分ほど待ってください。');
+    }
+    $want = trim((string)file_get_contents($pinFile));
+    $got  = trim((string)($_SERVER['HTTP_X_SAWA_PIN'] ?? ''));
+    if ($want === '' || $got === '' || !hash_equals($want, $got)) {
+        $left = pin_note_fail($tryFile);
+        fail(401, $left > 0
+            ? 'PINが違います(あと' . $left . '回)。サーバーの init-pin.txt を確認してください。'
+            : '間違いが続いたため、' . (int)(PIN_LOCK_SEC / 60) . '分ほど取り戻せなくなりました。');
+    }
+    /* ★今ある合言葉をそのまま返す。作り直すと過去の記録が読めなくなる */
+    $token = trim((string)file_get_contents($tokenFile));
+    if ($token === '') fail(500, '合言葉を読めませんでした');
     @unlink($pinFile);
     @unlink($tryFile);
     out(['ok' => true, 'token' => $token]);

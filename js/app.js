@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v48";
+const APP_VERSION = "v49";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1624,7 +1624,7 @@ function renderHome() {
   const tl = $("#todayList");
   if (!q.length) tl.innerHTML = `<p class="empty">学習記録がまだありません。学習タブでミミ先生に「診断して」と伝えてください。</p>`;
   else tl.innerHTML = q.slice(0, 6).map((x) => {
-    const st = x.state; const flagged = st?.flagged || st?.history.at(-1)?.q === "hi-wrong";
+    const st = x.state; const flagged = isHotState(st);
     const badge = flagged ? '<span class="tl-badge alert">要注意</span>'
       : x.kind === "new" ? '<span class="tl-badge new">新規</span>' : '<span class="tl-badge rev">復習</span>';
     const why = flagged ? "自信ありで間違えた場所 — 今なら直りやすい"
@@ -1730,7 +1730,7 @@ function renderSubjectPick() {
     // その教科の「要注意(自信あり×不正解)」の数
     const alert = cs.filter((c) => {
       const st = S.mem[c.id];
-      return st && (st.flagged || st.history.at(-1)?.q === "hi-wrong");
+      return isHotState(st);
     }).length;
     return `<button class="sp ${k === mapFilter ? "on" : ""}" data-mf="${k}">
       <span class="sp-e">${v.emoji}</span>
@@ -1774,7 +1774,7 @@ function renderMap() {
       const st = S.mem[c.id];
       let cls = "m0";
       if (st && st.S > 0) {
-        if (st.flagged || st.history.at(-1)?.q === "hi-wrong") cls = "m3";
+        if (isHotState(st)) cls = "m3";
         else cls = st.mastery >= 0.7 ? "m2" : "m1";
       }
       return `<span class="kc ${cls}" data-kc="${c.id}" title="${esc(c.u)}">${esc(c.n)}</span>`;
@@ -3126,6 +3126,11 @@ function init() {
 
   renderPersona(); renderKyotsu(); renderAll(); renderUndo(); renderVoicePick();
 
+  /* ★端末のデータが消えたあと、サーバーに記録が残っていることに
+     気づけるようにする。保護者タブの奥にあっても見に行かないので、
+     記録が空のときだけ、起動時に知らせる。 */
+  checkRecoverable();
+
   // オフラインでも開けるように
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -4051,6 +4056,13 @@ async function renderServerBackup() {
         このページを開き直してください。</p></div>`;
     return;
   }
+  /* ★このサーバーはもう設定済みで、預けた記録もある。
+     でもこの端末には合言葉が無い ——【端末のデータが消えたあと】の状態。
+     記録はサーバーに残っているのに、取りに行く鍵だけが無い。
+     これまでは復元用リンクを作っていない限り詰んでいた。
+     PINで取り戻せるようにする(PINを読めること自体が本人の証拠)。 */
+  if (found.can_recover) { renderRecover(box, found); return; }
+
   /* ★初期化には、サーバーが作ったPINが要る。
      以前は「最初に叩いた端末が合言葉を持っていける」形だったので、
      URLを先に知られると横取りされる余地があった。
@@ -4106,6 +4118,96 @@ async function renderServerBackup() {
     }
     renderBackup();
   };
+}
+
+/* ── 端末のデータが消えたあと、記録を取り戻す ────────────── */
+
+/** 記録が空なのに、サーバーには預けてある —— それを起動時に知らせる */
+async function checkRecoverable() {
+  if (S.srvToken) return;                                   // 鍵を持っているなら困っていない
+  const hasLocal = Object.keys(S.mem || {}).length || (S.sessions || []).length;
+  if (hasLocal) return;                                     // この端末に記録がある
+  const found = await srvPing();
+  if (!found?.can_recover) return;
+
+  const el = $("#kidExpiry");                               // ホームのいちばん上
+  if (!el) return;
+  el.hidden = false;
+  el.className = "card kidnote warn";
+  el.innerHTML = `<div class="kn-head">${lukeFace(40)}
+      <div><b>まえの記録が、サーバーに のこっているよ</b>
+      <p class="kn-luke">きえてないよ。とりもどせる!</p></div></div>
+    <p class="kn-b">おうちの人に <b>「沙和ナビ、まえのきろく もどして」</b> と伝えてください。</p>
+    <button class="btn btn-sm kn-go" id="kidRecGo">おうちの人がここを押す</button>`;
+  $("#kidRecGo").onclick = () => { go("parent"); renderBackup(); };
+}
+
+function pinRouteHtml(exposed) {
+  const host = location.hostname;
+  return `<ol class="pin-steps">
+    <li><b>エックスサーバーのサーバーパネル</b>にログイン</li>
+    <li><span class="pin-k">ファイル管理</span> を開く</li>
+    <li>${exposed
+        ? `<span class="pin-k">${esc(host)}</span> → <span class="pin-k">public_html</span> → <span class="pin-k">api</span> → <span class="pin-k">data</span> の順に開く`
+        : `<span class="pin-k">${esc(host)}</span> を開く<br>
+           <span class="pin-note">public_html と<b>同じ並び</b>に <span class="pin-k">sawa-backups</span> があります。その中へ</span>`}</li>
+    <li><span class="pin-k">init-pin.txt</span> の右にある <b>編集</b> を押す</li>
+    <li>中に書いてある<b>8文字</b>を、下に入れる<br>
+      <span class="pin-note">数字の 0・1 と、文字の O・I は使っていません</span></li>
+  </ol>`;
+}
+
+async function renderRecover(box, found) {
+  box.innerHTML = `<div class="bk-notice warn">
+      <b>📦 このサーバーに、預けてある記録が見つかりました</b>
+      <p>この端末には記録がありませんが、<b>サーバーには残っています。</b><br>
+        取り戻すには、サーバーにあるPINを1回だけ確認してください。
+        <b>PINを読めるのは、サーバーを操作できる人だけ</b>なので、これが本人確認になります。</p></div>
+    <p class="cs">下の「PINを用意する」を押すと、サーバーがPINを1つ作ります。</p>
+    <button class="btn btn-primary" id="recStart">PINを用意する</button>
+    <div id="recStep2"></div>`;
+
+  document.querySelector("#recStart").onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = "用意しています…";
+    try {
+      const j = await srvFetch("recover_start");
+      document.querySelector("#recStep2").innerHTML =
+        pinRouteHtml(found.exposed) +
+        `<label class="lbl">PIN(8文字)
+          <input type="text" id="recPin" class="inp" placeholder="例:ABCD2345"
+            autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="16"></label>
+        <button class="btn btn-primary" id="recGo">記録を取り戻す</button>
+        <p class="cs">合言葉は<b>作り直しません</b>。これまで預けた記録がそのまま読めます。<br>
+          5回まちがえると15分ほど待つことになります(総当たり対策)。</p>`;
+      e.target.hidden = true;
+      document.querySelector("#recGo").onclick = doRecover;
+      void j;
+    } catch (err) {
+      e.target.disabled = false; e.target.textContent = "PINを用意する";
+      alert(String(err.message || err));
+    }
+  };
+}
+
+async function doRecover(e) {
+  const pin = (document.querySelector("#recPin")?.value || "").trim();
+  if (!pin) { toast("PINを入れてください"); return; }
+  e.target.disabled = true; e.target.textContent = "取り戻しています…";
+  try {
+    const j = await srvFetch("recover", { pin });
+    S.srvToken = j.token; S.srvLastError = ""; save();
+
+    const list = await srvFetch("list");
+    const items = list?.items || [];
+    if (!items.length) { alert("合言葉は取り戻せましたが、預けた記録が見つかりませんでした。"); renderBackup(); return; }
+    const txt = await srvFetch("get", { query: "&f=" + encodeURIComponent(items[0].file), raw: true });
+    applyBackupText(txt);
+    alert("記録を取り戻しました。おかえりなさい。");
+    location.reload();
+  } catch (err) {
+    e.target.disabled = false; e.target.textContent = "記録を取り戻す";
+    alert(String(err.message || err));
+  }
 }
 
 async function renderServerList() {

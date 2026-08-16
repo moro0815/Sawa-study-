@@ -86,6 +86,7 @@ function reviewConcept(state, grade, confidence, now = Date.now()) {
   state.reps++;
   state.last = now;
   state.history.push({ t: now, correct, confidence, q });
+  state.history = memHistory(state);
   if (state.history.length > 40) state.history.shift();
 
   // 次回復習日 — 想起可能性がTARGET_RETENTIONまで落ちる日
@@ -102,7 +103,7 @@ function reviewConcept(state, grade, confidence, now = Date.now()) {
   }
 
   // 習得度 — 直近の正答率と安定度の合成
-  const recent = state.history.slice(-6);
+  const recent = memHistory(state).slice(-6);
   const acc = recent.filter((h) => h.correct).length / recent.length;
   const stab = Math.min(1, Math.log10(state.S + 1) / Math.log10(60));
   state.mastery = clamp(acc * 0.6 + stab * 0.4, 0, 1);
@@ -137,7 +138,7 @@ function buildQueue(memStates, opts = {}) {
       const R = retrievability(st, now);
       const overdue = st.due ? (now - st.due) / DAY : 0;
       let score = 0;
-      const lastQ = st.history.at(-1)?.q;
+      const lastQ = lastQuadrant(st);
       if (st.flagged || lastQ === "hi-wrong") score += 1000;      // 最優先
       if (overdue >= 0) score += 400 + Math.min(200, overdue * 20);
       score += (1 - R) * 300;
@@ -215,6 +216,21 @@ function diagnoseRootCause(conceptId, memStates) {
   return suspects;
 }
 
+/**
+ * 記憶モデルの履歴を、安全に取り出す。
+ * ★古い版のバックアップや、途中まで書かれた記録を復元すると、
+ *   history を持たない状態が混ざる。そのまま `.at(-1)` を読むと
+ *   例外になり、【画面全体が描けなくなる】(実際にそうなった)。
+ *   記録が欠けていても、アプリは動きつづけるほうがよい。
+ */
+function memHistory(st) { return Array.isArray(st?.history) ? st.history : []; }
+
+/** 直近の象限(hi-wrong など)。無ければ "" */
+function lastQuadrant(st) { return memHistory(st).at(-1)?.q || ""; }
+
+/** 「自信あり×不正解」で、いちばん優先すべきものか */
+function isHotState(st) { return !!(st && (st.flagged || lastQuadrant(st) === "hi-wrong")); }
+
 /** 弱点サマリー(4象限別の集計) */
 function weaknessSummary(memStates) {
   const counts = { "hi-wrong": 0, "lo-wrong": 0, "lo-right": 0, "hi-right": 0 };
@@ -223,11 +239,12 @@ function weaknessSummary(memStates) {
 
   for (const id in memStates) {
     const st = memStates[id];
-    const last = st.history.at(-1);
-    if (!last) continue;
+    const hist = memHistory(st);
+    const last = hist.at(-1);
+    if (!last || !(last.q in counts)) continue;      // 知らない象限も弾く
     counts[last.q]++;
     if (items[last.q].length < 12) items[last.q].push(CONCEPT_MAP[id]);
-    for (const h of st.history) {
+    for (const h of hist) {
       totalAnswers++;
       if (h.confidence >= 3) { hiTotal++; if (!h.correct) hiWrong++; }
     }

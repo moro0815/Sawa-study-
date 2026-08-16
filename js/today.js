@@ -93,7 +93,7 @@ function todayPlan(S, modeId) {
   const news = q.filter((x) => x.kind === "new");
 
   // 最優先(自信ありで間違えた)を先頭に
-  const hot = reviews.filter((x) => x.state?.flagged || x.state?.history.at(-1)?.q === "hi-wrong");
+  const hot = reviews.filter((x) => isHotState(x.state));
   const rest = reviews.filter((x) => !hot.includes(x));
 
   /* ★「1つだけ成功体験」— 確実にできるものを必ず1つ混ぜる。
