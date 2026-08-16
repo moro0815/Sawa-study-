@@ -125,7 +125,7 @@ const STUDY_METHODS = [
     strength: "非常に強い",
     evidence(S) {
       const spread = Object.values(S.mem || {}).filter((m) => (m.history || []).length >= 2)
-        .map((m) => ({ span: (m.history.at(-1).t - m.history[0].t) / 864e5, mastery: m.mastery }));
+        .map((m) => { const h = memHistory(m); return { span: h.length ? (h.at(-1).t - h[0].t) / 864e5 : 0, mastery: m.mastery }; });
       const wide = spread.filter((x) => x.span >= 3), narrow = spread.filter((x) => x.span < 1);
       if (wide.length < 3 || narrow.length < 3) return null;
       return { text: `3日以上かけて復習した単元は ${pct(avg(wide.map((x) => x.mastery)))}、同じ日に固めた単元は ${pct(avg(narrow.map((x) => x.mastery)))}。`,
@@ -277,9 +277,9 @@ function recentWins(S, days = 7) {
   for (const [id, m] of Object.entries(S.mem || {})) {
     const c = CONCEPT_MAP[id];
     if (!c || !m.history?.length) continue;
-    const inRange = m.history.filter((h) => h.t >= since);
+    const inRange = memHistory(m).filter((h) => h.t >= since);
     if (!inRange.length) continue;
-    const before = m.history.filter((h) => h.t < since);
+    const before = memHistory(m).filter((h) => h.t < since);
     const fixed = before.some((h) => !h.correct) && inRange.every((h) => h.correct);
     if (fixed) wins.push({ id, name: c.n, subject: SUBJECTS[c.s]?.name || c.s, kind: "直した" });
     else if (!before.length && m.mastery >= 0.7) wins.push({ id, name: c.n, subject: SUBJECTS[c.s]?.name || c.s, kind: "新しく覚えた" });
