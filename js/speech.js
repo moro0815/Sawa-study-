@@ -203,7 +203,7 @@ function listenOnce({ lang = "en-US", timeout = 9000 } = {}) {
    自分の声を聞くのは、発音を直す最も確実な方法のひとつ。
    認識が使えない端末でも、これは動く。 */
 
-const REC = { stream: null, rec: null, chunks: [], url: null };
+const REC = { stream: null, rec: null, chunks: [], url: null, ac: null, an: null, buf: null, peak: 0 };
 
 function canRecord() {
   return !!(navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined");
@@ -238,9 +238,49 @@ async function recStart() {
   }
   REC.chunks = [];
   REC.rec.ondataavailable = (e) => { if (e.data?.size) REC.chunks.push(e.data); };
+
+  /* ★音の大きさを取れるようにする。
+     これが無いと「マイクが音を拾えているのか」が誰にも分からず、
+     黙って失敗する。画面にメーターを出すため、そして
+     「ずっと無音だった」を正しく伝えるために要る。 */
+  REC.peak = 0;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) {
+      REC.ac = new AC();
+      if (REC.ac.state === "suspended") REC.ac.resume();
+      const src = REC.ac.createMediaStreamSource(REC.stream);
+      REC.an = REC.ac.createAnalyser();
+      REC.an.fftSize = 1024;
+      REC.buf = new Uint8Array(REC.an.fftSize);
+      src.connect(REC.an);                 // 出力へはつながない(自分の声が返らないように)
+    }
+  } catch (_) { REC.ac = null; REC.an = null; }
+
   REC.rec.start();
   return { ok: true };
 }
+
+/**
+ * いまの音の大きさ(0〜1)。録音していないときは 0。
+ * 実効値(RMS)を使う。瞬間の最大値より、声かどうかの判断に向く。
+ */
+function recLevel() {
+  if (!REC.an || !REC.buf) return 0;
+  REC.an.getByteTimeDomainData(REC.buf);
+  let sum = 0;
+  for (let i = 0; i < REC.buf.length; i++) {
+    const v = (REC.buf[i] - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / REC.buf.length);
+  const lv = Math.min(1, rms * 4);           // 話し声がだいたい 0.3〜0.8 になる倍率
+  if (lv > REC.peak) REC.peak = lv;
+  return lv;
+}
+
+/** 録音のあいだに一度でも声らしい音が入ったか */
+function recHeardSound() { return REC.peak >= 0.06; }
 
 function recStop() {
   return new Promise((resolve) => {
@@ -251,8 +291,10 @@ function recStop() {
       if (REC.url) URL.revokeObjectURL(REC.url);
       REC.url = URL.createObjectURL(blob);
       REC.stream?.getTracks().forEach((t) => t.stop());
-      REC.stream = null; REC.rec = null;
-      resolve({ ok: true, url: REC.url, blob, bytes: blob.size });
+      const heard = recHeardSound(), peak = REC.peak;
+      try { REC.ac?.close(); } catch (_) { }
+      REC.stream = null; REC.rec = null; REC.ac = null; REC.an = null; REC.buf = null;
+      resolve({ ok: true, url: REC.url, blob, bytes: blob.size, heard, peak });
     };
     try { r.stop(); } catch { resolve({ ok: false, error: "stop-failed" }); }
   });

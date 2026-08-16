@@ -38,6 +38,10 @@ const TALK = {
   topic: null,
   abort: null,
   fixes: [],           // 振り返りで出す直し
+  raf: 0,              // 音の大きさを見つづける
+  recAt: 0,            // 録音を始めた時刻
+  lastLoud: 0,         // 最後に声が入った時刻
+  micLock: false,      // 二度押し防止
 };
 
 /* ── レベルと話題 ──────────────────────────────────────── */
@@ -221,7 +225,7 @@ function talkStatus(text) {
 
 async function talkSpeak(en, opts = {}) {
   TALK.speaking = true;
-  talkMicEnable(false);                       // 読み上げ中はマイクを止める(自分の声を拾わないように)
+  talkMicEnable(true);   // 読み上げ中でも押せる。押されたらLukeを止めて聞き取りへ
   /* ★Lukeの声は毎回おなじ。相棒なので声が変わるとおかしい。
      選ばれた声(なければいちばん自然と判定したもの)を明示して渡す。
      以前は声を指定せず、macOSではジョーク音声が選ばれていた。 */
@@ -234,9 +238,15 @@ async function talkSpeak(en, opts = {}) {
   talkMicEnable(true);
 }
 
+/**
+ * マイクを押せるかどうか。
+ * ★読み上げ中も【押せるままにする】。押したらLukeを止めて聞き取りに入る。
+ *   ここを disabled にしていたので、話しかけたいときにボタンが死んでいた。
+ *   本当に押させたくないのは、AIの返事を待っている間(busy)だけ。
+ */
 function talkMicEnable(on) {
   const b = document.getElementById("tkMic");
-  if (b) b.disabled = !on || TALK.busy;
+  if (b) b.disabled = TALK.busy;
 }
 
 /** Lukeの返事を HEARD行 / 英語 / JP行 に分ける */
@@ -346,46 +356,133 @@ async function talkUserAudio(blob) {
   TALK.busy = false; talkMicEnable(true);
 }
 
+/* ── マイク ────────────────────────────────────────────────
+   ★ここは「うまくいかない」と言われて作り直した場所。直した中身:
+
+   1. Lukeが話している間、押しても【無反応】だった
+      → 押したらLukeの話を止めて、すぐ聞き取りに入る。
+        話しかけたいときに黙らされるのがいちばん困る
+   2. 音を拾えているのか【誰にも分からなかった】
+      → 音の大きさをメーターで出す。動かなければマイクの問題だと分かる
+   3. 話しおわってから【もう一度押す】必要があった
+      → 黙ったら自動で送る。押し忘れて無音を送ってしまう事故も消える
+   4. 失敗の理由がぜんぶ「聞き取れなかった」だった
+      → 無音・マイク不許可・通信・短すぎ を分けて伝える  */
+
+const TALK_SILENCE_MS = 1600;   // これだけ黙ったら「話しおわった」とみなす
+const TALK_MIN_MS = 700;        // これより短い録音は送らない(押し間違い)
+
+function talkMeter(on, lv) {
+  const m = document.getElementById("tkMeter");
+  if (!m) return;
+  m.hidden = !on;
+  if (on) m.style.setProperty("--lv", Math.round(Math.min(1, lv) * 100) + "%");
+}
+
+/** 録音を止めて送る。理由つきで止めることもある */
+async function talkStopAndSend() {
+  clearTimeout(TALK.recTimer);
+  cancelAnimationFrame(TALK.raf);
+  TALK.raf = 0;
+  const mic = document.getElementById("tkMic");
+  mic.classList.remove("on");
+  mic.textContent = "🎤";
+  talkMeter(false, 0);
+
+  const ms = Date.now() - (TALK.recAt || 0);
+  const r = await recStop();
+  if (!r.ok) { talkStatus(""); return; }
+
+  if (ms < TALK_MIN_MS) {
+    talkStatus("みじかすぎたみたい。押してから、ゆっくり話してね");
+    return;
+  }
+  if (r.heard === false) {
+    /* ★「短すぎ」で片づけない。音が1度も入っていないのは別の話で、
+       たいていマイクの選択か音量の問題。原因を言い当てる。 */
+    talkStatus("声が入っていないみたい。Macの音の入り口(マイク)を確かめてね");
+    return;
+  }
+  talkStatus("");
+  talkUserAudio(r.blob);
+}
+
+/** 録音中、音の大きさを見つづける。黙ったら自動で送る */
+function talkWatchLevel() {
+  const tick = () => {
+    if (!recBusy()) return;
+    const lv = recLevel();
+    talkMeter(true, lv);
+    const now = Date.now();
+    if (lv >= 0.06) TALK.lastLoud = now;                  // 声が出ている
+    /* 声が一度でも入ったあと、しばらく黙ったら送る。
+       まだ一度も声が入っていないときは待ちつづける(考えている時間) */
+    if (TALK.lastLoud && now - TALK.lastLoud > TALK_SILENCE_MS) {
+      talkStopAndSend();
+      return;
+    }
+    TALK.raf = requestAnimationFrame(tick);
+  };
+  TALK.raf = requestAnimationFrame(tick);
+}
+
 async function talkMicTap() {
-  if (TALK.busy || TALK.speaking) return;
+  if (TALK.busy || TALK.micLock) return;        // 二度押しで二重に始めない
   const mic = document.getElementById("tkMic");
 
-  /* A. Gemini なら、声をそのまま送る(押して話す→もう一度押して送る) */
+  /* ★Lukeが話している最中に押されたら、Lukeを止めて聞き取りに入る。
+     以前はここで黙って return していたので、押しても無反応に見えた。 */
+  if (TALK.speaking) {
+    stopSpeaking();
+    TALK.speaking = false;
+  }
+
+  /* A. Gemini なら、声をそのまま送る */
   if (talkAudioMode()) {
-    if (typeof recBusy === "function" && recBusy()) {
-      clearTimeout(TALK.recTimer);
-      mic.classList.remove("on"); mic.textContent = "🎤";
-      const r = await recStop();
-      talkStatus("");
-      /* 2KB未満は「押してすぐ離した」— 音がほぼ入っていない */
-      if (r.ok && r.bytes > 2000) talkUserAudio(r.blob);
-      else talkStatus("みじかすぎたみたい。もういちど、押してから話してね");
-      return;
-    }
+    if (recBusy()) { await talkStopAndSend(); return; }   // 自分で止めることもできる
+
+    TALK.micLock = true;
     const st = await recStart();
+    TALK.micLock = false;
     if (!st.ok) {
-      if (st.error === "denied") talkStatus("マイクが「だめ」になってるみたい。おうちの人に伝えてね");
-      else talkStatus("マイクが使えないみたい。下の欄に書いてね");
+      if (st.error === "denied") talkStatus("マイクを つかっていいか きかれたら「許可」をおしてね。だめなときは おうちの人に伝えて");
+      else talkStatus("マイクが使えないみたい。下の欄に文字で書いてもOK");
       return;
     }
+    TALK.recAt = Date.now();
+    TALK.lastLoud = 0;
     mic.classList.add("on"); mic.textContent = "⏹";
-    talkStatus("きいています… 話しおわったら、もういちど押してね");
-    TALK.recTimer = setTimeout(() => { if (typeof recBusy === "function" && recBusy()) talkMicTap(); }, TALK_REC_MAX_MS);
+    talkStatus("きいてるよ。話しおわったら、そのまま待つだけでOK");
+    talkMeter(true, 0);
+    talkWatchLevel();
+    TALK.recTimer = setTimeout(() => { if (recBusy()) talkStopAndSend(); }, TALK_REC_MAX_MS);
     return;
   }
 
   /* B. それ以外は、ブラウザの音声認識で文字にして送る */
+  TALK.micLock = true;
   mic.classList.add("on");
-  talkStatus("きいています… 英語で話してみて");
+  talkStatus("きいてるよ。英語で話してみて");
   const live = document.getElementById("tkLive");
   live.textContent = ""; live.hidden = false;
   const r = await talkListen({ onInterim: (t) => { live.textContent = t; } });
   mic.classList.remove("on");
   live.hidden = true;
-  if (r.ok) { talkStatus(""); talkUser(r.text); }
-  else if (r.error === "unsupported") talkStatus("この端末では声が使えないみたい。下の欄に書いてね");
-  else if (r.error === "not-allowed" || r.error === "service-not-allowed") talkStatus("マイクが「だめ」になってるみたい。おうちの人に伝えてね");
-  else talkStatus("聞き取れなかった…もういちど、ゆっくりどうぞ");
+  TALK.micLock = false;
+
+  if (r.ok) { talkStatus(""); talkUser(r.text); return; }
+  /* ★理由ごとに言い分ける。全部「聞き取れなかった」にすると、
+     マイクが切れていても本人は自分のせいだと思ってしまう。 */
+  const msg = {
+    unsupported: "この端末では声が使えないみたい。下の欄に文字で書いてね",
+    "not-allowed": "マイクを つかっていいか きかれたら「許可」をおしてね。だめなときは おうちの人に伝えて",
+    "service-not-allowed": "マイクを つかっていいか きかれたら「許可」をおしてね。だめなときは おうちの人に伝えて",
+    "audio-capture": "マイクが見つからないみたい。Macの音の入り口を確かめてね",
+    network: "いま つながりにくいみたい。少し待って、もういちどどうぞ",
+    "no-speech": "聞こえなかったよ。マイクに近づいて、もういちど言ってみて",
+    timeout: "聞こえなかったよ。マイクに近づいて、もういちど言ってみて",
+  }[r.error] || "うまく聞き取れなかった。もういちど、ゆっくりどうぞ";
+  talkStatus(msg);
 }
 
 /* ── 振り返り ──────────────────────────────────────────── */
@@ -393,6 +490,8 @@ async function talkMicTap() {
 async function talkEnd() {
   try { TALK.rec?.stop(); } catch {}
   clearTimeout(TALK.recTimer);
+  cancelAnimationFrame(TALK.raf); TALK.raf = 0;
+  talkMeter(false, 0);
   if (typeof recBusy === "function" && recBusy()) await recStop();
   stopSpeaking();
   if (!TALK.turns) { closeTalk(); return; }    // 一言も話していなければ、静かに閉じるだけ
@@ -482,6 +581,7 @@ function openTalk() {
   }
   const pad = document.getElementById("talkPad");
   TALK.open = true; TALK.msgs = []; TALK.turns = 0; TALK.busy = false; TALK.fixes = [];
+  TALK.micLock = false; TALK.lastLoud = 0; TALK.recAt = 0;
   TALK.topic = talkPickTopic(S);
   pad.hidden = false;
   document.getElementById("tkChat").innerHTML = "";
@@ -511,6 +611,8 @@ function closeTalk() {
   try { TALK.abort?.abort(); } catch {}
   try { TALK.rec?.stop(); } catch {}
   clearTimeout(TALK.recTimer);
+  cancelAnimationFrame(TALK.raf); TALK.raf = 0;
+  talkMeter(false, 0);
   if (typeof recBusy === "function" && recBusy()) recStop();   // 録音しっぱなしにしない
   stopSpeaking();
   TALK.open = false;
