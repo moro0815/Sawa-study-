@@ -222,7 +222,14 @@ function talkStatus(text) {
 async function talkSpeak(en, opts = {}) {
   TALK.speaking = true;
   talkMicEnable(false);                       // 読み上げ中はマイクを止める(自分の声を拾わないように)
-  await speak(en, { varied: false, rate: opts.rate ?? 0.92 });
+  /* ★Lukeの声は毎回おなじ。相棒なので声が変わるとおかしい。
+     選ばれた声(なければいちばん自然と判定したもの)を明示して渡す。
+     以前は声を指定せず、macOSではジョーク音声が選ばれていた。 */
+  await speak(en, {
+    voice: opts.voice || (typeof lukeVoice === "function" ? lukeVoice() : null),
+    varied: false,
+    rate: opts.rate ?? 0.95,
+  });
   TALK.speaking = false;
   talkMicEnable(true);
 }
