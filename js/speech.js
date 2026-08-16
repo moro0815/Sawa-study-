@@ -36,9 +36,72 @@ if (ttsSupported()) {
   });
 }
 
-/** 英語の声だけを取り出す */
+/* ── どの声を使うか ────────────────────────────────────────
+   ★ここは実際に「声がおかしい」と言われて直した場所。
+
+   macOS には英語の声として【ジョーク用の音声】が標準で入っている。
+   Albert / Bad News / Bubbles / Zarvox / Trinoids など。
+   `en` で絞っただけだとこれらが混ざり、しかも
+     ・発音ドリル → 全部からランダムに選ぶ
+     ・英会話   → リストの1番目を無条件に使う
+   という作りだったので、先頭に来やすい Albert がLukeの声になっていた。
+
+   なので「名前で除外 → 点数をつけて良い順に並べる」ようにする。 */
+
+/** 英語の声として出てくるが、人の声として使ってはいけないもの */
+const VOICE_NOVELTY = new RegExp([
+  // 効果音のような声
+  "bad ?news", "bahh", "bells", "boing", "bubbles", "cellos", "deranged",
+  "good ?news", "jester", "organ", "superstar", "trinoids", "whisper", "wobble",
+  "zarvox", "hysterical", "novelty",
+  // 古くて機械的な声
+  "albert", "fred", "junior", "kathy", "princess", "ralph", "agnes", "bruce", "victoria",
+  // macOS の「キャラクター」音声。ちゃんと喋るが、くせが強い
+  "eddy", "flo", "grandma", "grandpa", "reed", "rocko", "sandy", "shelley",
+].map((x) => "\\b" + x + "\\b").join("|"), "i");
+
+/** よくできた声(macOS / iOS / Chrome)。前に置くほど優先 */
+const VOICE_PREFERRED = [
+  // アメリカ英語
+  "Google US English", "Samantha", "Ava", "Allison", "Susan", "Nicky", "Alex", "Tom",
+  // イギリス英語
+  "Google UK English Female", "Google UK English Male", "Daniel", "Kate", "Serena", "Oliver",
+];
+
+/** 英語の声(ぜんぶ) */
 function enVoices() {
   return SPEECH.voices.filter((v) => /^en([-_]|$)/i.test(v.lang || ""));
+}
+
+/** 声の良さを点数にする。大きいほど自然 */
+function voiceScore(v) {
+  const n = v.name || "", lang = (v.lang || "").replace("_", "-");
+  let s = 0;
+  const pref = VOICE_PREFERRED.findIndex((p) => n.toLowerCase().startsWith(p.toLowerCase()));
+  if (pref >= 0) s += 1000 - pref * 10;                       // 名指しのものを最優先
+  if (/google|natural|neural|premium|enhanced/i.test(n)) s += 300;
+  if (v.localService === false) s += 120;                     // ネットワーク音声は自然なことが多い
+  if (/^en-(US|GB)$/i.test(lang)) s += 80;                    // まずは米・英
+  else if (/^en-(AU|CA|IE|NZ)$/i.test(lang)) s += 30;
+  if (/compact|eloquence/i.test(n)) s -= 200;                 // 機械的な軽量版
+  return s;
+}
+
+/**
+ * 人の声として使ってよい英語の声を、良い順に。
+ * ★全部はじかれる端末があるかもしれないので、そのときは
+ *   絞らずに返す。読み上げが丸ごと止まるほうが困る。
+ */
+function goodEnVoices() {
+  const all = enVoices();
+  const ok = all.filter((v) => !VOICE_NOVELTY.test(v.name || ""));
+  return (ok.length ? ok : all).slice().sort((a, b) => voiceScore(b) - voiceScore(a));
+}
+
+/** 名前から声を探す(保護者が選んだものを覚えておくため) */
+function voiceByName(name) {
+  if (!name) return null;
+  return SPEECH.voices.find((v) => v.name === name) || null;
 }
 
 /**
@@ -48,11 +111,19 @@ function enVoices() {
  * Bradlow, Pisoni, Akahane-Yamada & Tohkura (1997) — 日本語話者のR/L訓練
  */
 function pickEnVoice(varied = true) {
-  const list = enVoices();
+  const list = goodEnVoices();
   if (!list.length) return null;
+  /* ★varied=false は「毎回おなじ声」。Luke がこれを使う。
+     以前は list[0](= 並び順の先頭)だったので、
+     macOS ではジョーク音声の Albert が選ばれていた。
+     いまは点数が最も高いものが先頭に来る。 */
   if (!varied) return list[0];
-  // 直前と同じ声は避ける
-  const pool = list.length > 1 ? list.filter((v) => v.name !== SPEECH.lastVoice) : list;
+  /* 声を変えるのは聞き分けの訓練(HVPT)のため。
+     ただし変えてよいのは【まともな声の中でだけ】。
+     上位6つに絞る。ここを絞らないと、
+     訓練の名のもとに変な声を聞かせることになる。 */
+  const pool0 = list.slice(0, 6);
+  const pool = pool0.length > 1 ? pool0.filter((v) => v.name !== SPEECH.lastVoice) : pool0;
   const v = pool[Math.floor(Math.random() * pool.length)] || list[0];
   SPEECH.lastVoice = v.name;
   return v;
@@ -68,7 +139,10 @@ function speak(text, opts = {}) {
     try { speechSynthesis.cancel(); } catch {}
     const u = new SpeechSynthesisUtterance(String(text));
     const v = opts.voice || pickEnVoice(opts.varied !== false);
-    if (v) u.voice = v;
+    /* ★声の指定に失敗しても、読み上げ自体は続ける。
+       端末の更新で声が消えていることがあり、そこで例外を投げると
+       英会話が丸ごと無音になる。既定の声で喋るほうがまし。 */
+    if (v) { try { u.voice = v; } catch (_) { } }
     u.lang = opts.lang || v?.lang || "en-US";
     u.rate = opts.rate ?? 1;
     u.pitch = opts.pitch ?? 1;

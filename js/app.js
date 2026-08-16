@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v46";
+const APP_VERSION = "v47";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -2872,6 +2872,15 @@ function init() {
   $("#msWrite").onclick = () => openWritePad("kanji");
   $("#msTalk").onclick = openTalk;
   $("#engTalkBtn").onclick = openTalk;
+  $("#tkVoice").onchange = () => {
+    S.talkVoice = $("#tkVoice").value;      // "" = おまかせ
+    save(); renderVoicePick();
+    if (S.talkVoice) speakSafe("Hi! I'm Luke. Let's talk!", { voice: voiceByName(S.talkVoice) });
+  };
+  $("#tkVoiceTest").onclick = () =>
+    speakSafe("Hi! I'm Luke. What did you do today?", { voice: lukeVoice() });
+  /* 声は非同期で届く。届いたら選択肢を作り直す */
+  document.addEventListener("voices-ready", renderVoicePick);
   $("#tkClose").onclick = closeTalk;
   $("#tkEnd").onclick = talkEnd;
   $("#tkMic").onclick = talkMicTap;
@@ -3115,7 +3124,7 @@ function init() {
      書き出し処理で同じ壊れ方をしているので、見つけしだい1本にする。 */
   redrawChat();
 
-  renderPersona(); renderKyotsu(); renderAll(); renderUndo();
+  renderPersona(); renderKyotsu(); renderAll(); renderUndo(); renderVoicePick();
 
   // オフラインでも開けるように
   if ("serviceWorker" in navigator) {
@@ -4171,6 +4180,34 @@ function renderBackup() {
     if (!confirm(`${bk.date} の状態に戻します。\n\n今の状態も自動でひかえを取るので、やり直せます。`)) return;
     if (restoreBackup(i)) { alert("戻しました。"); location.reload(); }
   });
+}
+
+/* ── Lukeの声 ──────────────────────────────────────────
+   ★端末によって入っている声が違うので、選べるようにしてある。
+   既定(おまかせ)は goodEnVoices() の先頭 = いちばん自然と判定したもの。 */
+
+function lukeVoice() {
+  return voiceByName(S.talkVoice) || pickEnVoice(false);
+}
+
+function renderVoicePick() {
+  const sel = $("#tkVoice");
+  if (!sel) return;
+  const list = goodEnVoices();
+  const label = (v) => {
+    const l = (v.lang || "").replace("_", "-").toUpperCase();
+    const kuni = l.startsWith("EN-US") ? "アメリカ" : l.startsWith("EN-GB") ? "イギリス"
+      : l.startsWith("EN-AU") ? "オーストラリア" : l.startsWith("EN-IE") ? "アイルランド"
+      : l.startsWith("EN-CA") ? "カナダ" : l.replace("EN-", "");
+    return `${v.name}(${kuni})`;
+  };
+  sel.innerHTML = `<option value="">おまかせ(いちばん自然なもの)</option>` +
+    list.map((v) => `<option value="${esc(v.name)}">${esc(label(v))}</option>`).join("");
+  sel.value = S.talkVoice || "";
+  const now = lukeVoice();
+  $("#tkVoiceNote").textContent = list.length
+    ? `いまの声:${now ? label(now) : "(まだ読み込み中)"} / 選べる声 ${list.length}種類`
+    : "この端末には英語の声が入っていないようです。会話の文字は出ますが、読み上げはできません。";
 }
 
 /* ═══════════════ AIプロバイダの設定画面 ═══════════════ */
