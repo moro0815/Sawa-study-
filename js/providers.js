@@ -118,7 +118,9 @@ class ApiError extends Error {
          直し方を2つとも書く(どちらでも直る)。 */
       if (/scoped to a workspace|anthropic-workspace-id/i.test(this.message))
         return "このキーは「組織全体のキー」で、どのワークスペースで使うかが決まっていません。\n\n"
-             + "直し方は2つ、どちらでも大丈夫です。\n"
+             + "★まず確認:キーが sk-ant-admin で始まっていたら、それは会話に使えない「管理用のキー」です。"
+             + "console.anthropic.com の API Keys で作った、sk-ant-api で始まるふつうのキーに貼り替えてください。\n\n"
+             + "ふつうのキーでも出る場合の直し方(どちらか):\n"
              + "① 保護者タブの「ワークスペースID」に、コンソールのワークスペースのIDを入れる\n"
              + "② console.anthropic.com で、ワークスペースの中から作り直したキーに入れ替える(おすすめ)";
       if (/model/i.test(this.message))
