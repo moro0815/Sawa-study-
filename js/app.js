@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v50";
+const APP_VERSION = "v51";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -2849,6 +2849,7 @@ function init() {
     $("#settingsMsg").textContent = "";
   });
   $("#fetchModels").onclick = fetchModelList;
+  $("#apiKey").addEventListener("input", renderKeyShape);   // 貼った瞬間に形を確かめる
   $("#modelAuto").onclick = () => {
     aiUse(S, uiUse).model = "";        // 空にする = 自動にもどす
     save(); renderProviderUI();
@@ -4320,6 +4321,37 @@ function renderVoicePick() {
     : "この端末には英語の声が入っていないようです。会話の文字は出ますが、読み上げはできません。";
 }
 
+/* ── 貼ったキーの形を確かめる ───────────────────────────
+   ★「つながらない」の原因が、キーの【種類ちがい】のことがある。
+   特に Anthropic には会話用のキー(sk-ant-api…)とは別に
+   組織の管理用キー(sk-ant-admin…)があり、こちらを貼ると
+   「ワークスペースに属していません」と英語で断られる。
+   通信する前に、形だけで分かることは先に言う。 */
+function keyShapeWarning(providerId, key) {
+  const k = String(key || "").trim();
+  if (!k) return "";
+  const p = providerOf(providerId);
+  if (providerId === "anthropic" && /^sk-ant-admin/i.test(k)) {
+    return "⚠ これは<b>「管理用のキー(Admin key)」</b>のようです。会話には使えません。<br>"
+      + "console.anthropic.com の <b>API Keys</b> で「Create Key」から作った、"
+      + "<code>sk-ant-api</code> で始まる<b>ふつうのキー</b>を貼ってください。";
+  }
+  if (p.keyPrefix && !k.startsWith(p.keyPrefix)) {
+    return `⚠ ${esc(p.short)} のキーは <code>${esc(p.keyPrefix)}</code> で始まります。`
+      + "別の会社のキーや、途中までしかコピーされていないキーが入っていないか確かめてください。";
+  }
+  if (/\s/.test(k)) return "⚠ キーの途中に空白や改行が入っています。コピーし直してください。";
+  return "";
+}
+
+function renderKeyShape() {
+  const el = $("#keyShape");
+  if (!el) return;
+  const w = keyShapeWarning(useProviderId(S, uiUse), $("#apiKey").value);
+  el.hidden = !w;
+  el.innerHTML = w;
+}
+
 /* ═══════════════ AIプロバイダの設定画面 ═══════════════ */
 
 /* いま設定画面で編集している用途。画面の状態なので保存しない */
@@ -4402,6 +4434,7 @@ function renderProviderUI() {
   $("#apiKeyLabel").firstChild.nodeValue = `${u.name}の ${p.keyLabel}`;
   $("#apiKey").placeholder = p.keyPlaceholder;
   $("#apiKey").value = useKey(S, uiUse);
+  renderKeyShape();
   $("#keyNote").innerHTML =
     `<a href="${p.keyUrl}" target="_blank" rel="noopener">${esc(new URL(p.keyUrl).host)}</a> で取得できます。`;
 }
