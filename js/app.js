@@ -13,7 +13,7 @@ const KEY = "sawa-navi-v2";
 const BKEY = "sawa-navi-backups";      // 端末内の自動バックアップ
 const MAX_BACKUPS = 12;
 /* アップロードが反映されたか確認するための版数。sw.js の CACHE と揃えること */
-const APP_VERSION = "v49";
+const APP_VERSION = "v50";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -1094,6 +1094,7 @@ async function send(override) {
   try {
     const res = await chatWithTools({
       provider: useProviderId(S), model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
+      workspaceId: useWorkspaceId(S),
       system: buildSystemPrompt(S.persona, {
         name: S.name, grade: S.grade, career: curCareer(),
         pastDreams: (S.dreamHistory || []).map((d) => CAREER_MAP[d.career]?.name).filter(Boolean),
@@ -1169,10 +1170,12 @@ async function send(override) {
       S.apiMessages = repairPairs(S.apiMessages);
     }
 
-    /* ★提供元にキーを拒否された(401/403)= 実質の期限切れ。
+    /* ★提供元にキーを拒否された = 実質の期限切れ。
+       401/403 だけでなく、ワークスペース未指定の 400 もここに入れる
+       (中身はキーの問題なのに、英語の説明が子どもの画面に出ていた)。
        沙和さんには「APIキーが正しくありません」ではなく、
        できること(おうちの人に伝える)だけを出す。 */
-    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+    if (isKeyProblem(e)) {
       markKeyInvalid(S); save();
       const n = expiryChildNotice(S);
       addMsg("err", `${n.title}\n\nおうちの人に「沙和ナビ、こうしんおねがい」と伝えてください。\n記録は消えていません。書く練習はこのまま使えます。`);
@@ -3047,12 +3050,16 @@ function init() {
     const prevKey = useKey(S, uiUse);
     setUseKey(S, uiUse, $("#apiKey").value);
     // ★キーを入れ替えたら、拒否の印を消す(入れ直したのに止まったままだと詰む)
-    if (useKey(S, uiUse) !== prevKey) clearKeyInvalid(S, uiUse);
+    const prevWs = aiUse(S, uiUse).workspaceId || "";
     /* ★モデル名は空のままにできること。
        空 = 自動。ここで既定を書き戻すと、モデルがその版に固定され、
        新しいものが出ても乗り換わらなくなる(前はそうなっていた)。 */
     aiUse(S, uiUse).model = $("#model").value.trim();
     if (curProvider(uiUse).needsBaseUrl) aiUse(S, uiUse).baseUrl = $("#baseUrl").value.trim();
+    aiUse(S, uiUse).workspaceId = $("#workspaceId").value.trim();
+    /* ★キーだけでなく、ワークスペースIDを直したときも印を消す。
+       消さないと「IDを入れたのに、まだ送信が止まったまま」になる。 */
+    if (useKey(S, uiUse) !== prevKey || aiUse(S, uiUse).workspaceId !== prevWs) clearKeyInvalid(S, uiUse);
     S.name = $("#pName").value.trim() || "沙和";
     const prevGrade = S.grade;
     S.grade = $("#pGrade").value;
@@ -3988,6 +3995,7 @@ async function testApi() {
     let reply = "";
     const res = await sendToProvider({
       provider: useProviderId(S), model: curModel(), apiKey: curKey(), baseUrl: curBaseUrl(),
+      workspaceId: useWorkspaceId(S),
       system: "あなたは日本語で答えます。",
       messages: [{ role: "user", content: "『準備できました』とだけ返してください。" }],
       tools: null,
@@ -4356,6 +4364,20 @@ function renderProviderUI() {
     ? `いま「${a.model}」に固定しています`
     : `自動です(いまは ${p.defaultModel} を使います)`;
 
+  /* ワークスペースIDは Anthropic のときだけ。
+     ほかの会社には無い概念なので、出すと迷わせるだけ。 */
+  const isAnthropic = a.provider === "anthropic";
+  $("#wsRow").hidden = !isAnthropic;
+  $("#wsNote").hidden = !isAnthropic;
+  if (isAnthropic) {
+    $("#workspaceId").value = a.workspaceId || "";
+    $("#wsNote").innerHTML = a.workspaceId
+      ? "このIDを付けて送っています。"
+      : "<b>ふつうは空のままで大丈夫です。</b>「このキーはワークスペースに属していません」と断られたときだけ、"
+        + "<a href=\"https://console.anthropic.com/settings/workspaces\" target=\"_blank\" rel=\"noopener\">コンソールのワークスペース</a>"
+        + "のIDを入れてください。<b>ワークスペースの中でキーを作り直すほうが簡単です。</b>";
+  }
+
   const needBase = !!p.needsBaseUrl;
   $("#baseUrlRow").hidden = !needBase;
   if (needBase) $("#baseUrl").value = curBaseUrl(uiUse);
@@ -4390,9 +4412,17 @@ function modelNoteHtml(p) {
     const yen = costPerTurnYen(useProviderId(S, uiUse), m.id);
     return `${esc(m.label)} … 1往復あたり<b>約${yen}円</b>`;
   });
-  if (!rows.length) return "モデル名は提供元の表記どおりに入力してください。";
-  return rows.join(" / ") +
-    "<br>※ 入力8,000・出力800トークン、1ドル155円で計算した目安です。実際の請求は提供元の画面で確認してください。";
+  /* ★価格を持たないモデルを黙って省くと、「無料なのかな」と誤解される。
+     分からないものは「分からない」と書く。 */
+  const unknown = p.models.filter((m) => m.inUsd == null).map((m) => esc(m.label));
+  if (!rows.length && !unknown.length) return "モデル名は提供元の表記どおりに入力してください。";
+  let h = rows.join(" / ");
+  if (rows.length) h += "<br>※ 入力8,000・出力800トークン、1ドル155円で計算した目安です。実際の請求は提供元の画面で確認してください。";
+  if (unknown.length) {
+    h += `${rows.length ? "<br>" : ""}⚠ <b>${unknown.join(" / ")}</b> は、このアプリに料金表が入っていません。`
+      + `<b>提供元の価格表で確認してください。</b>目安金額にも含まれません。`;
+  }
+  return h;
 }
 
 async function fetchModelList() {
