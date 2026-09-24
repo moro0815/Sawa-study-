@@ -22,7 +22,7 @@ const PROVIDERS = {
   anthropic: {
     label: "Claude (Anthropic)",
     short: "Claude",
-    defaultModel: "claude-opus-5",
+    defaultModel: "claude-opus-5-5",
     keyUrl: "https://console.anthropic.com/",
     keyLabel: "Anthropic APIキー",
     keyPlaceholder: "sk-ant-api03-…",
@@ -30,7 +30,11 @@ const PROVIDERS = {
     needsBaseUrl: false,
     note: "教える力と写真の読み取りがいちばん高い。そのぶん料金も高い。",
     models: [
-      { id: "claude-opus-5",    label: "Opus 5(最高性能)",    inUsd: 5,  outUsd: 25 },
+      /* ★料金(inUsd/outUsd)は、こちらで確かめられたものだけ書く。
+         分からないものに数字を入れると、目安金額が嘘になる。
+         価格を持たないモデルは、設定画面で「提供元で確認」と出る。 */
+      { id: "claude-opus-5-5",  label: "Opus 5.5(最新・最高性能)" },
+      { id: "claude-opus-5",    label: "Opus 5",               inUsd: 5,  outUsd: 25 },
       { id: "claude-sonnet-5",  label: "Sonnet 5(バランス)",  inUsd: 3,  outUsd: 15 },
       { id: "claude-haiku-4-5", label: "Haiku 4.5(最安・軽量)", inUsd: 1, outUsd: 5 },
     ],
@@ -109,6 +113,14 @@ class ApiError extends Error {
       // 利用者にはモデル名の話をしても意味がないので分けて出す。
       if (/tool_result|tool_use|tool_call/i.test(this.message))
         return "会話のつながりが途中で切れてしまいました。ここまでの会話をいったん整理してから、もう一度送ってみてください。";
+      /* ★「キーがワークスペースに属していない」。
+         英語のまま出しても保護者には何をすればよいか分からない。
+         直し方を2つとも書く(どちらでも直る)。 */
+      if (/scoped to a workspace|anthropic-workspace-id/i.test(this.message))
+        return "このキーは「組織全体のキー」で、どのワークスペースで使うかが決まっていません。\n\n"
+             + "直し方は2つ、どちらでも大丈夫です。\n"
+             + "① 保護者タブの「ワークスペースID」に、コンソールのワークスペースのIDを入れる\n"
+             + "② console.anthropic.com で、ワークスペースの中から作り直したキーに入れ替える(おすすめ)";
       if (/model/i.test(this.message))
         return "モデル名が正しくないようです。設定画面で綴りを確認するか、「使えるモデルの一覧を取得」から選び直してください。" + (this.message ? "\n" + this.message : "");
       return "リクエストが受け付けられませんでした。" + (this.message ? "\n" + this.message : "");
@@ -124,6 +136,19 @@ class ApiError extends Error {
     if (/credit|billing|balance|quota|残高/i.test(this.message)) return "APIの残高または利用枠が足りないようです。おうちの方に確認してください。";
     return this.message || "エラーが起きました。もう一度お試しください。";
   }
+}
+
+/**
+ * 「キーそのものが使えない」エラーか。
+ * ★401/403 だけでは足りない。ワークスペース未指定は【400】で返ってくるのに、
+ *   中身は完全にキーの問題。ここを分けないと、英語混じりの説明が
+ *   そのまま沙和さんのチャット画面に出てしまう(実際に出ていた)。
+ */
+function isKeyProblem(e) {
+  if (!(e instanceof ApiError)) return false;
+  if (e.status === 401 || e.status === 403) return true;
+  return e.status === 400 &&
+    /scoped to a workspace|anthropic-workspace-id|invalid.{0,12}api.{0,4}key|authentication/i.test(e.message || "");
 }
 
 /** fetch の失敗をCORS/ネットワークに分けて投げ直す */
@@ -174,7 +199,7 @@ async function errorFrom(res) {
    Anthropic
    ========================================================================= */
 
-async function sendAnthropic({ apiKey, model, system, messages, tools, onDelta, signal }) {
+async function sendAnthropic({ apiKey, model, system, messages, tools, onDelta, signal, workspaceId }) {
   const body = {
     model,
     max_tokens: MAX_TOKENS,
@@ -192,6 +217,10 @@ async function sendAnthropic({ apiKey, model, system, messages, tools, onDelta, 
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
+      /* ★組織全体のキー(ワークスペースに属していないキー)は、
+         どのワークスペースで使うかを添えないと 400 で断られる。
+         保護者タブで入れてもらった場合だけ付ける。空なら付けない。 */
+      ...(workspaceId ? { "anthropic-workspace-id": workspaceId } : {}),
     },
     signal,
     body: JSON.stringify(body),

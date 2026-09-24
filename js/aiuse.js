@@ -47,7 +47,7 @@ function useId(u) { return AI_USES[u] ? u : DEFAULT_USE; }
 function aiUse(S, u) {
   const id = useId(u);
   migrateAiSettings(S);
-  return (S.ai[id] ||= { provider: "anthropic", model: "", baseUrl: "" });
+  return (S.ai[id] ||= { provider: "anthropic", model: "", baseUrl: "", workspaceId: "" });
 }
 
 function migrateAiSettings(S) {
@@ -69,6 +69,7 @@ function migrateAiSettings(S) {
       provider: oldProvider,
       model: S.model || "",
       baseUrl: S.baseUrl || "",
+      workspaceId: "",
     };
   }
 
@@ -122,6 +123,15 @@ function useModel(S, u, providers) {
 
 /** モデル名を自分で決めているか(=自動でない) */
 function useModelPinned(S, u) { return !!aiUse(S, u).model; }
+
+/**
+ * ワークスペースID(Anthropic だけ)。
+ * ★組織全体のキーは、これが無いと 400 で断られる。
+ *   ワークスペースの中で作ったキーなら空のままでよい。
+ */
+function useWorkspaceId(S, u) {
+  return (aiUse(S, u).workspaceId || "").trim();
+}
 
 function useBaseUrl(S, u, providers) {
   const a = aiUse(S, u);

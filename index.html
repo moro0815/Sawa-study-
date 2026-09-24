@@ -733,6 +733,12 @@
       <input type="text" id="baseUrl" class="inp" placeholder="https://openrouter.ai/api/v1"></label>
     <p class="warn-note" id="baseUrlWarn" hidden></p>
 
+    <!-- 組織全体のキーを使うときだけ要る。ワークスペース内で作ったキーなら空でよい -->
+    <label class="lbl" id="wsRow" hidden>ワークスペースID(ふつうは空のままでOK)
+      <input type="text" id="workspaceId" class="inp" placeholder="wrkspc_… / 空のままでOK"
+        autocomplete="off" spellcheck="false"></label>
+    <p class="cs" id="wsNote" hidden></p>
+
     <label class="lbl" id="apiKeyLabel">APIキー
       <input type="password" id="apiKey" class="inp" placeholder="…"></label>
     <p class="cs" id="keyNote"></p>

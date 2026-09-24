@@ -285,6 +285,7 @@ async function talkUser(text) {
     const res = await chatWithTools({
       provider: useProviderId(S, TALK_USE), model: curModel(TALK_USE),
       apiKey: curKey(TALK_USE), baseUrl: curBaseUrl(TALK_USE),
+      workspaceId: useWorkspaceId(S, TALK_USE),
       system: talkSystemPrompt(S),
       messages: TALK.msgs, tools: [],
       runTool: async () => ({}),
@@ -300,7 +301,7 @@ async function talkUser(text) {
     if (e?.kind !== "abort") {
       console.warn("talk:", scrubSecrets(String(e?.message || e), S));
       /* キーが拒否されたら、ふだんの会話と同じ仕組みに印をつける(保護者タブに出る) */
-      if (e?.status === 401 || e?.status === 403) { markKeyInvalid(S, TALK_USE); save(); }
+      if (isKeyProblem(e)) { markKeyInvalid(S, TALK_USE); save(); }
       talkBubble("luke", "(うまくつながらなかったみたい。もういちど話してみて。何度もだめなら、おうちの人に伝えてね)", "");
     }
   }
@@ -324,6 +325,7 @@ async function talkUserAudio(blob) {
     const res = await chatWithTools({
       provider: useProviderId(S, TALK_USE), model: curModel(TALK_USE),
       apiKey: curKey(TALK_USE), baseUrl: curBaseUrl(TALK_USE),
+      workspaceId: useWorkspaceId(S, TALK_USE),
       system: talkSystemPrompt(S),
       messages: TALK.msgs, tools: [],
       runTool: async () => ({}),
@@ -349,7 +351,7 @@ async function talkUserAudio(blob) {
     meEl.querySelector(".tk-t").textContent = "🎤(とどかなかった)";
     if (e?.kind !== "abort") {
       console.warn("talk-audio:", scrubSecrets(String(e?.message || e), S));
-      if (e?.status === 401 || e?.status === 403) { markKeyInvalid(S, TALK_USE); save(); }
+      if (isKeyProblem(e)) { markKeyInvalid(S, TALK_USE); save(); }
       talkBubble("luke", "(うまくつながらなかったみたい。もういちど話してみて。何度もだめなら、おうちの人に伝えてね)", "");
     }
   }
@@ -505,6 +507,7 @@ async function talkEnd() {
     await chatWithTools({
       provider: useProviderId(S, TALK_USE), model: curModel(TALK_USE),
       apiKey: curKey(TALK_USE), baseUrl: curBaseUrl(TALK_USE),
+      workspaceId: useWorkspaceId(S, TALK_USE),
       system: talkSystemPrompt(S) +
         "\n\n# いまから会話は終わりです\ntalk_feedback を必ず1回だけ呼んでください。呼んだら 'Bye! See you!' とだけ言ってください。",
       messages: [...TALK.msgs, { role: "user", content: "(おしゃべりを終わります。振り返りをお願いします)" }],
